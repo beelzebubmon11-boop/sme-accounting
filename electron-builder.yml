@@ -1,0 +1,25 @@
+appId: com.sme-accounting.app
+productName: SME 회계
+directories:
+  buildResources: build
+  output: dist
+files:
+  - .next/standalone/**/*
+  - .next/static/**/*
+  - electron/**/*.js
+  - electron/migrations/**/*
+  - public/**/*
+extraMetadata:
+  main: electron/main.js
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
