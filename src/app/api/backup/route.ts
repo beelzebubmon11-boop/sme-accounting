@@ -1,24 +1,32 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import fs from "fs";
+import { queryAll } from "@/lib/db/client";
 
 export async function GET() {
   try {
-    const dbPath = process.env.SME_DB_PATH || path.join(process.cwd(), "dev-data.db");
+    // Export all data as JSON backup (works on both local and serverless)
+    const tables = [
+      "profiles", "chart_of_accounts", "clients", "categories",
+      "accounts", "vouchers", "voucher_lines", "sales", "purchases",
+      "fixed_assets", "vat_periods", "fiscal_closings", "opening_balances",
+    ];
 
-    if (!fs.existsSync(dbPath)) {
-      return NextResponse.json({ error: "데이터베이스 파일을 찾을 수 없습니다." }, { status: 404 });
+    const backup: Record<string, any[]> = {};
+    for (const table of tables) {
+      try {
+        backup[table] = await queryAll(`SELECT * FROM ${table}`);
+      } catch {
+        backup[table] = [];
+      }
     }
 
-    const fileBuffer = fs.readFileSync(dbPath);
     const now = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const json = JSON.stringify(backup, null, 2);
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(json, {
       headers: {
-        "Content-Type": "application/x-sqlite3",
-        "Content-Disposition": `attachment; filename="sme-accounting-backup-${dateStr}.db"`,
-        "Content-Length": String(fileBuffer.length),
+        "Content-Type": "application/json",
+        "Content-Disposition": `attachment; filename="sme-accounting-backup-${dateStr}.json"`,
       },
     });
   } catch (err: any) {

@@ -1,8 +1,7 @@
 import { createClient, type Client, type Transaction } from "@libsql/client";
 import { AsyncLocalStorage } from "node:async_hooks";
-import path from "path";
-import fs from "fs";
 import { randomUUID } from "crypto";
+import { MIGRATIONS } from "./migrations";
 
 let _client: Client | null = null;
 let _initPromise: Promise<void> | null = null;
@@ -12,7 +11,7 @@ function getClient(): Client {
   if (_client) return _client;
 
   const url = process.env.TURSO_DATABASE_URL
-    || `file:${process.env.SME_DB_PATH || path.join(process.cwd(), "dev-data.db")}`;
+    || `file:${process.env.SME_DB_PATH || "dev-data.db"}`;
   const authToken = process.env.TURSO_AUTH_TOKEN;
 
   _client = createClient({
@@ -48,18 +47,31 @@ async function runMigrations(db: Client) {
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  const migrationsDir = path.join(process.cwd(), "electron", "migrations");
-  if (!fs.existsSync(migrationsDir)) return;
-
-  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith(".sql")).sort();
+  const migrationNames = Object.keys(MIGRATIONS).sort();
   const result = await db.execute("SELECT name FROM _migrations");
   const applied = new Set(result.rows.map((r: any) => r.name));
 
-  for (const file of files) {
-    if (applied.has(file)) continue;
-    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-    await db.executeMultiple(sql);
-    await db.execute({ sql: "INSERT INTO _migrations (name) VALUES (?)", args: [file] });
+  for (const name of migrationNames) {
+    if (applied.has(name)) continue;
+    const sql = MIGRATIONS[name];
+    // executeMultiple may not handle ALTER TABLE well on libsql,
+    // so execute statements one by one
+    const statements = sql
+      .split(";")
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith("--"));
+    for (const stmt of statements) {
+      try {
+        await db.execute(stmt);
+      } catch (e: any) {
+        // Ignore "duplicate column" errors from ALTER TABLE
+        if (e.message?.includes("duplicate column") || e.message?.includes("already exists")) {
+          continue;
+        }
+        throw e;
+      }
+    }
+    await db.execute({ sql: "INSERT INTO _migrations (name) VALUES (?)", args: [name] });
   }
 
   await seedIfEmpty(db);
