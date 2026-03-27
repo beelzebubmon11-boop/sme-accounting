@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SME Accounting - 업데이트 리포트</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.7;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+
+    /* Header */
+    header {
+      text-align: center;
+      padding: 60px 0 40px;
+      border-bottom: 1px solid #1e293b;
+      margin-bottom: 48px;
+    }
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    header p { color: #94a3b8; font-size: 1.05rem; }
+    .stats-bar {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .stat-value.green { color: #34d399; }
+    .stat-value.red { color: #f87171; }
+    .stat-value.purple { color: #a78bfa; }
+    .stat-label {
+      font-size: 0.8rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Phase sections */
+    .phase {
+      margin-bottom: 40px;
+      background: #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+    .phase-header {
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    .phase-header:hover { background: #253348; }
+    .phase-number {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+    .phase-header h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      flex: 1;
+    }
+    .phase-tag {
+      font-size: 0.7rem;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tag-critical { background: #7f1d1d; color: #fca5a5; }
+    .tag-security { background: #713f12; color: #fde68a; }
+    .tag-schema { background: #1e3a5f; color: #93c5fd; }
+    .tag-logic { background: #3b0764; color: #d8b4fe; }
+    .tag-feature { background: #064e3b; color: #6ee7b7; }
+    .tag-ui { background: #4a1d6a; color: #e9d5ff; }
+    .chevron {
+      color: #64748b;
+      transition: transform 0.3s;
+      font-size: 1.2rem;
+    }
+    .phase.open .chevron { transform: rotate(90deg); }
+
+    .phase-body {
+      padding: 0 24px 24px;
+      display: none;
+    }
+    .phase.open .phase-body { display: block; }
+
+    /* Items */
+    .item {
+      padding: 16px 0;
+      border-bottom: 1px solid #293548;
+    }
+    .item:last-child { border-bottom: none; }
+    .item-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #f1f5f9;
+      margin-bottom: 6px;
+    }
+    .item-desc {
+      font-size: 0.88rem;
+      color: #94a3b8;
+      margin-bottom: 10px;
+    }
+    .file-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .file-badge {
+      font-size: 0.75rem;
+      background: #0f172a;
+      color: #7dd3fc;
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      border: 1px solid #1e3a5f;
+    }
+
+    /* Code blocks */
+    .code-block {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 10px 0;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.6;
+    }
+    .code-block .keyword { color: #c084fc; }
+    .code-block .string { color: #34d399; }
+    .code-block .comment { color: #64748b; }
+    .code-block .fn { color: #60a5fa; }
+
+    /* Before/After */
+    .diff {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 10px 0;
+    }
+    @media (max-width: 640px) {
+      .diff { grid-template-columns: 1fr; }
+    }
+    .diff-panel {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .diff-before {
+      border: 1px solid #7f1d1d;
+    }
+    .diff-before::before {
+      content: 'BEFORE';
+      display: block;
+      font-size: 0.65rem;
+      color: #f87171;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 0.08em;
+    }
+    .diff-after {
+      border: 1px solid #064e3b;
+    }
+    .diff-after::before {
+      content: 'AFTER';
+      display: block;
+      font-size: 0.65rem;
+      color: #34d399;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 0.08em;
+    }
+    .del { color: #f87171; text-decoration: line-through; opacity: 0.7; }
+    .add { color: #34d399; }
+
+    /* New files */
+    .new-file-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      background: #064e3b;
+      color: #6ee7b7;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* Summary table */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.88rem;
+    }
+    .summary-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: #0f172a;
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .summary-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #293548;
+      color: #cbd5e1;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 40px 0;
+      color: #475569;
+      font-size: 0.85rem;
+      border-top: 1px solid #1e293b;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>SME Accounting 업데이트 리포트</h1>
+      <p>전체 코드베이스 품질 개선 - 보안, 회계 정합성, ERP 기능 강화</p>
+      <div class="stats-bar">
+        <div class="stat">
+          <div class="stat-value">35</div>
+          <div class="stat-label">변경된 파일</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value green">+967</div>
+          <div class="stat-label">추가된 줄</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value red">-227</div>
+          <div class="stat-label">삭제된 줄</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value purple">6</div>
+          <div class="stat-label">개선 단계</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Phase 1 -->
+    <div class="phase open" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#7f1d1d;color:#fca5a5;">1</div>
+        <h2>대차대조표 계산 오류 수정</h2>
+        <span class="phase-tag tag-critical">Critical Bug</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">자산/부채/자본 자연잔액 방향 오류 수정</div>
+          <div class="item-desc">
+            모든 계정과목에 대해 <code>debit - credit</code>으로 잔액을 계산하고 있었음.
+            부채와 자본은 <strong>대변(credit) 잔액</strong>이 자연잔액이므로 <code>credit - debit</code>으로 계산해야 정확함.
+            이로 인해 재무상태표의 부채/자본 금액이 음수로 표시되는 치명적 버그가 있었음.
+          </div>
+          <div class="diff">
+            <div class="diff-panel diff-before"><span class="del">COALESCE(SUM(vl.debit_amount),0)
+  - COALESCE(SUM(vl.credit_amount),0)
+  as balance</span>
+
+-- 모든 계정에 동일한 계산 적용
+-- JS에서 부채/자본을 -1 곱해서 보정 (불안정)</div>
+            <div class="diff-panel diff-after"><span class="add">CASE
+  WHEN coa.category = 'asset'
+  THEN SUM(vl.debit_amount) - SUM(vl.credit_amount)
+  ELSE SUM(vl.credit_amount) - SUM(vl.debit_amount)
+END as balance</span>
+
+-- 계정 유형별 자연잔액 방향 적용
+-- is_closing = 0, is_deleted = 0 필터 추가</div>
+          </div>
+          <div class="file-list">
+            <span class="file-badge">statements/balance-sheet/page.tsx</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="phase" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#1e3a5f;color:#93c5fd;">2</div>
+        <h2>DB 스키마 강화 (Migration 003)</h2>
+        <span class="phase-tag tag-schema">Schema</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">감사 로그 테이블 <span class="new-file-badge">NEW</span></div>
+          <div class="item-desc">모든 데이터 변경 이력을 추적하는 <code>audit_logs</code> 테이블 추가. JSON 스냅샷으로 변경 전/후 데이터를 기록.</div>
+          <div class="code-block"><span class="keyword">CREATE TABLE</span> audit_logs (
+  id <span class="fn">TEXT PRIMARY KEY</span>,
+  table_name TEXT <span class="keyword">NOT NULL</span>,
+  record_id TEXT <span class="keyword">NOT NULL</span>,
+  action TEXT <span class="keyword">NOT NULL</span>,  <span class="comment">-- INSERT, UPDATE, DELETE</span>
+  old_data TEXT,              <span class="comment">-- JSON snapshot (변경 전)</span>
+  new_data TEXT,              <span class="comment">-- JSON snapshot (변경 후)</span>
+  created_at DATETIME <span class="keyword">DEFAULT</span> CURRENT_TIMESTAMP
+);</div>
+        </div>
+
+        <div class="item">
+          <div class="item-title">소프트 삭제 (Soft Delete) 컬럼 추가</div>
+          <div class="item-desc">
+            <code>vouchers</code>, <code>sales</code>, <code>purchases</code>, <code>clients</code>, <code>accounts</code> 테이블에
+            <code>is_deleted</code>, <code>deleted_at</code> 컬럼 추가. 물리적 삭제 대신 논리적 삭제 처리.
+          </div>
+          <table class="summary-table">
+            <tr><th>테이블</th><th>추가 컬럼</th></tr>
+            <tr><td>vouchers</td><td>is_deleted, deleted_at, is_reversal, reversal_of, fiscal_year</td></tr>
+            <tr><td>sales</td><td>is_deleted, deleted_at</td></tr>
+            <tr><td>purchases</td><td>is_deleted, deleted_at</td></tr>
+            <tr><td>clients</td><td>is_deleted, deleted_at</td></tr>
+            <tr><td>accounts</td><td>is_deleted, deleted_at</td></tr>
+          </table>
+        </div>
+
+        <div class="item">
+          <div class="item-title">데이터 무결성 트리거 (7개)</div>
+          <div class="item-desc">금액 검증, 회계기간 잠금, 감사 로그 자동 생성 등 SQLite 트리거 추가</div>
+          <table class="summary-table">
+            <tr><th>트리거</th><th>역할</th></tr>
+            <tr><td>trg_voucher_line_no_zero</td><td>전표 항목 금액 0 방지</td></tr>
+            <tr><td>trg_voucher_line_no_negative</td><td>전표 항목 음수 금액 방지</td></tr>
+            <tr><td>trg_sales_amount_check</td><td>매출 금액 양수 검증</td></tr>
+            <tr><td>trg_purchases_amount_check</td><td>매입 금액 양수 검증</td></tr>
+            <tr><td>trg_posting_period_lock_*</td><td>마감된 회계연도 전표 입력/수정/삭제 차단</td></tr>
+            <tr><td>trg_auto_fiscal_year</td><td>전표 저장 시 fiscal_year 자동 설정</td></tr>
+            <tr><td>trg_audit_vouchers_*</td><td>전표 변경 시 감사로그 자동 생성</td></tr>
+          </table>
+        </div>
+
+        <div class="item">
+          <div class="item-title">성능 인덱스 15개 추가</div>
+          <div class="item-desc">자주 조회되는 컬럼에 인덱스를 추가하여 대량 데이터 환경에서 쿼리 성능 향상</div>
+          <div class="code-block"><span class="comment">-- 예시: 추가된 인덱스</span>
+<span class="keyword">CREATE INDEX</span> idx_vouchers_date <span class="keyword">ON</span> vouchers(date);
+<span class="keyword">CREATE INDEX</span> idx_vouchers_type <span class="keyword">ON</span> vouchers(type);
+<span class="keyword">CREATE INDEX</span> idx_voucher_lines_account <span class="keyword">ON</span> voucher_lines(account_id);
+<span class="keyword">CREATE INDEX</span> idx_sales_client <span class="keyword">ON</span> sales(client_id);
+<span class="keyword">CREATE INDEX</span> idx_accounts_category <span class="keyword">ON</span> accounts(category);
+<span class="comment">-- ... 외 10개</span></div>
+        </div>
+
+        <div class="file-list">
+          <span class="file-badge">electron/migrations/003_schema_enhancements.sql</span>
+          <span class="file-badge">src/lib/db/client.ts</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="phase" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#713f12;color:#fde68a;">3</div>
+        <h2>SQL 인젝션 취약점 수정</h2>
+        <span class="phase-tag tag-security">Security</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">문자열 보간 → 파라미터화 쿼리 변환</div>
+          <div class="item-desc">
+            서버 컴포넌트에서 <code>${variable}</code> 형태의 문자열 보간을 사용해 SQL을 구성하고 있었음.
+            모든 동적 값을 <code>?</code> 파라미터로 변경하여 SQL 인젝션 공격 차단.
+          </div>
+          <div class="diff">
+            <div class="diff-panel diff-before"><span class="del">const data = queryAll(`
+  SELECT * FROM vouchers
+  WHERE date BETWEEN
+    '${currentYear}-01-01'
+    AND '${currentYear}-12-31'
+`);</span></div>
+            <div class="diff-panel diff-after"><span class="add">const data = queryAll(`
+  SELECT * FROM vouchers
+  WHERE date BETWEEN ? AND ?
+`, startDate, endDate);</span></div>
+          </div>
+          <div class="file-list">
+            <span class="file-badge">reports/general-ledger/page.tsx</span>
+            <span class="file-badge">reports/daily-monthly/page.tsx</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="phase" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#3b0764;color:#d8b4fe;">4</div>
+        <h2>서버 액션 전면 재작성</h2>
+        <span class="phase-tag tag-logic">Validation</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">입력 검증 체계 구축</div>
+          <div class="item-desc">모든 서버 액션에 Zod 기반 입력 검증, FK 존재 확인, 회계기간 잠금 체크, 정수 금액 강제, 한국어 에러 메시지 추가</div>
+          <table class="summary-table">
+            <tr><th>파일</th><th>주요 개선</th></tr>
+            <tr><td>vouchers.ts</td><td>require() 제거, 회계기간 잠금 체크, 대체전표 잔액 업데이트, 소프트삭제, 음수 금액 검증</td></tr>
+            <tr><td>clients.ts</td><td>사업자번호 정규식 검증 (000-00-00000), 문자열 길이 제한, 참조 무결성 검사 (매출/매입 존재 시 삭제 차단)</td></tr>
+            <tr><td>accounts.ts</td><td>계정 유형 enum 검증, 전표 참조 시 삭제 차단</td></tr>
+            <tr><td>sales.ts</td><td>날짜 형식 검증, 정수 금액 강제 (Math.round), FK 존재 확인, 회계기간 잠금</td></tr>
+            <tr><td>purchases.ts</td><td>sales.ts와 동일 패턴 적용</td></tr>
+            <tr><td>transactions.ts</td><td>FK 검증, 회계기간 체크, 정수 금액 강제, 날짜 정규식</td></tr>
+          </table>
+        </div>
+
+        <div class="item">
+          <div class="item-title">헬퍼 함수 추가 (client.ts)</div>
+          <div class="code-block"><span class="comment">// 회계기간 잠금 체크</span>
+<span class="keyword">export function</span> <span class="fn">checkFiscalPeriodOpen</span>(date: string): void
+
+<span class="comment">// 감사 로그 기록</span>
+<span class="keyword">export function</span> <span class="fn">auditLog</span>(table, recordId, action, oldData?, newData?)
+
+<span class="comment">// 소프트 삭제</span>
+<span class="keyword">export function</span> <span class="fn">softDelete</span>(table: string, id: string)
+
+<span class="comment">// 테이블 존재 확인 (FK 검증)</span>
+<span class="keyword">export function</span> <span class="fn">existsInTable</span>(table: string, id: string): boolean</div>
+        </div>
+
+        <div class="file-list">
+          <span class="file-badge">src/actions/vouchers.ts</span>
+          <span class="file-badge">src/actions/clients.ts</span>
+          <span class="file-badge">src/actions/accounts.ts</span>
+          <span class="file-badge">src/actions/sales.ts</span>
+          <span class="file-badge">src/actions/purchases.ts</span>
+          <span class="file-badge">src/actions/transactions.ts</span>
+          <span class="file-badge">src/lib/db/client.ts</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 5 -->
+    <div class="phase" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#064e3b;color:#6ee7b7;">5</div>
+        <h2>ERP 핵심 기능 추가</h2>
+        <span class="phase-tag tag-feature">Feature</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">역분개 (Reversal Voucher) <span class="new-file-badge">NEW</span></div>
+          <div class="item-desc">
+            회계 기준에 따라 전표 삭제 대신 역분개로 처리. 원래 전표의 차변/대변을 반대로 생성하여 효과를 상쇄.
+            원본 전표에 역분개 참조(<code>reversal_of</code>)가 기록됨.
+          </div>
+          <div class="code-block"><span class="comment">// 역분개 생성 프로세스</span>
+1. 원본 전표 존재 확인 &amp; 이미 역분개 여부 체크
+2. 역분개 일자의 회계기간 Open 확인
+3. 새 전표 생성 (is_reversal = 1, reversal_of = 원본ID)
+4. 원본의 차변 → 대변, 대변 → 차변으로 복사
+5. 은행 계좌 잔액 역방향 업데이트
+6. 원본 전표에 is_reversed = 1 표시</div>
+          <div class="file-list">
+            <span class="file-badge">src/actions/reverse-voucher.ts</span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="item-title">결산 자동화 (Closing Automation)</div>
+          <div class="item-desc">
+            연말 결산 시 수익/비용 계정을 자동으로 이익잉여금으로 마감하고,
+            다음 연도 기초잔액을 자동 생성하는 프로세스 구현.
+          </div>
+          <div class="code-block"><span class="comment">// 결산 자동화 프로세스</span>
+1. 당기순이익 계산 (수익 합계 - 비용 합계)
+2. 수익 마감분개: Dr 매출/수익계정 → Cr 이익잉여금(341)
+3. 비용 마감분개: Dr 이익잉여금(341) → Cr 비용계정
+4. 다음 회계연도 기초잔액 전표 자동 생성
+5. fiscal_closings 테이블에 마감 기록
+6. 전체 트랜잭션으로 원자성 보장</div>
+          <div class="file-list">
+            <span class="file-badge">src/app/api/closing/route.ts</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 6 -->
+    <div class="phase" onclick="this.classList.toggle('open')">
+      <div class="phase-header">
+        <div class="phase-number" style="background:#4a1d6a;color:#e9d5ff;">6</div>
+        <h2>UI/UX 개선 및 전역 필터 적용</h2>
+        <span class="phase-tag tag-ui">UI/UX</span>
+        <span class="chevron">&#9654;</span>
+      </div>
+      <div class="phase-body">
+        <div class="item">
+          <div class="item-title">전표 목록 페이지 전면 개편</div>
+          <div class="item-desc">대량 데이터 환경에서도 원활하게 동작하도록 페이지네이션, 검색, 필터 기능 추가</div>
+          <table class="summary-table">
+            <tr><th>기능</th><th>상세</th></tr>
+            <tr><td>페이지네이션</td><td>50건 단위 페이지 이동, 총 건수 표시</td></tr>
+            <tr><td>검색</td><td>전표번호, 적요로 검색</td></tr>
+            <tr><td>유형 필터</td><td>입금/출금/대체/매출/매입/일반 전표 필터</td></tr>
+            <tr><td>상태 표시</td><td>역분개 전표 [역], 결산 전표 [결] 배지 표시</td></tr>
+          </table>
+          <div class="file-list">
+            <span class="file-badge">src/app/(app)/vouchers/page.tsx</span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="item-title">is_deleted = 0 필터 전역 적용 (21개 파일)</div>
+          <div class="item-desc">
+            소프트삭제된 레코드가 모든 화면에서 제외되도록 전체 SQL 쿼리에 <code>is_deleted = 0</code> 조건 추가.
+            리포트, 재무제표, 목록 페이지, API 라우트 등 전체 적용.
+          </div>
+          <div class="file-list">
+            <span class="file-badge">dashboard/page.tsx</span>
+            <span class="file-badge">accounts/page.tsx</span>
+            <span class="file-badge">clients/page.tsx</span>
+            <span class="file-badge">sales/page.tsx</span>
+            <span class="file-badge">purchases/page.tsx</span>
+            <span class="file-badge">trial-balance/page.tsx</span>
+            <span class="file-badge">cash-book/page.tsx</span>
+            <span class="file-badge">client-summary/page.tsx</span>
+            <span class="file-badge">income-statement/page.tsx</span>
+            <span class="file-badge">cash-flow/page.tsx</span>
+            <span class="file-badge">vat/invoices/page.tsx</span>
+            <span class="file-badge">외 10개 파일</span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="item-title">기타 버그 수정</div>
+          <table class="summary-table">
+            <tr><th>항목</th><th>수정 내용</th></tr>
+            <tr><td>감가상각 계산</td><td>잔존가치=0일 때 정률법 수식 충돌 수정 (0으로 나누기 방지, 상각률 50% 상한)</td></tr>
+            <tr><td>계정원장 누적잔액</td><td>리렌더링 시 잔액이 계속 누적되는 버그 수정 (클로저 내 계산)</td></tr>
+            <tr><td>고정자산 장부가</td><td>취득 시 장부가 = 취득원가로 정확히 계산</td></tr>
+            <tr><td>API 입력 검증</td><td>자산/프로필 API에 필드별 검증 및 한국어 에러 메시지 추가</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      SME Accounting Update Report &mdash; 2026-03-27 &mdash; Branch: claude/assess-capabilities-vDa1K
+    </footer>
+  </div>
+
+  <script>
+    // Open first phase by default, rest collapsed
+    document.querySelectorAll('.phase').forEach((el, i) => {
+      if (i === 0) el.classList.add('open');
+    });
+  </script>
+</body>
+</html>
