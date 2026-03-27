@@ -5,7 +5,7 @@ import { queryOne, queryAll, execute, runTransaction, createVoucher, checkFiscal
 
 export async function createReversalVoucher(voucherId: string, reversalDate: string) {
   try {
-    const voucher = queryOne<{
+    const voucher = await queryOne<{
       id: string;
       voucher_no: string;
       voucher_type: string;
@@ -25,9 +25,9 @@ export async function createReversalVoucher(voucherId: string, reversalDate: str
     }
 
     // Validate reversal date period is open
-    checkFiscalPeriodOpen(reversalDate);
+    await checkFiscalPeriodOpen(reversalDate);
 
-    const lines = queryAll<{
+    const lines = await queryAll<{
       account_code: string;
       account_name: string;
       debit_amount: number;
@@ -50,8 +50,8 @@ export async function createReversalVoucher(voucherId: string, reversalDate: str
       description: l.description ? `[역분개] ${l.description}` : "[역분개]",
     }));
 
-    runTransaction(() => {
-      const reversalId = createVoucher({
+    await runTransaction(async () => {
+      const reversalId = await createVoucher({
         voucherType: voucher.voucher_type as any,
         voucherDate: reversalDate,
         description: `[역분개] ${voucher.description || voucher.voucher_no}`,
@@ -60,20 +60,20 @@ export async function createReversalVoucher(voucherId: string, reversalDate: str
       });
 
       // Mark as reversal
-      execute(
+      await execute(
         "UPDATE vouchers SET is_reversal = 1, reversal_of = ? WHERE id = ?",
         voucherId, reversalId
       );
 
       // Reverse account balance if deposit/withdrawal/transfer
       if (voucher.account_id && ["deposit", "withdrawal", "transfer"].includes(voucher.voucher_type)) {
-        const account = queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", voucher.account_id);
+        const account = await queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", voucher.account_id);
         if (account) {
           for (const line of lines) {
             if (line.account_code === account.account_code) {
               // Original was debit-credit, reversal is -(debit-credit)
               const delta = -(line.debit_amount - line.credit_amount);
-              execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, voucher.account_id);
+              await execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, voucher.account_id);
             }
           }
         }

@@ -5,12 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export const dynamic = "force-dynamic";
 
-export default function GeneralLedgerPage() {
+export default async function GeneralLedgerPage() {
   const currentYear = new Date().getFullYear();
   const yearStr = String(currentYear);
   const startDate = `${yearStr}-01-01`;
   const endDate = `${yearStr}-12-31`;
-  const data = queryAll<any>(`
+  const data = await queryAll<any>(`
     SELECT coa.code, coa.name,
       COALESCE(SUM(CASE WHEN strftime('%m',v.voucher_date)='01' THEN vl.debit_amount END),0) as m1d,
       COALESCE(SUM(CASE WHEN strftime('%m',v.voucher_date)='01' THEN vl.credit_amount END),0) as m1c,

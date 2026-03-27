@@ -22,7 +22,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export default function VouchersPage({
+export default async function VouchersPage({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string; type?: string; q?: string }>;
@@ -50,14 +50,14 @@ export default function VouchersPage({
 
   const whereClause = conditions.join(" AND ");
 
-  const totalCount = queryOne<{ cnt: number }>(
+  const totalCount = (await queryOne<{ cnt: number }>(
     `SELECT COUNT(*) as cnt FROM vouchers v WHERE ${whereClause}`,
     ...queryParams
-  )?.cnt || 0;
+  ))?.cnt || 0;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  const vouchers = queryAll<any>(
+  const vouchers = await queryAll<any>(
     `SELECT v.*,
       (SELECT SUM(debit_amount) FROM voucher_lines WHERE voucher_id = v.id) as total_debit,
       (SELECT SUM(credit_amount) FROM voucher_lines WHERE voucher_id = v.id) as total_credit,

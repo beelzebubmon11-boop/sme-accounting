@@ -5,8 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export const dynamic = "force-dynamic";
 
-export default function ClientSummaryPage() {
-  const data = queryAll<any>(`
+export default async function ClientSummaryPage() {
+  const data = await queryAll<any>(`
     SELECT c.name, COALESCE(SUM(vl.debit_amount),0) as td, COALESCE(SUM(vl.credit_amount),0) as tc
     FROM clients c LEFT JOIN voucher_lines vl ON vl.client_id=c.id LEFT JOIN vouchers v ON v.id=vl.voucher_id
     WHERE c.is_active=1 AND c.is_deleted = 0 AND (v.is_deleted = 0 OR v.is_deleted IS NULL) GROUP BY c.id,c.name HAVING td>0 OR tc>0 ORDER BY c.name

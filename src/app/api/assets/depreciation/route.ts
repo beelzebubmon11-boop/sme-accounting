@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
 
     const today = new Date().toISOString().split("T")[0];
 
-    runTransaction(() => {
+    await runTransaction(async () => {
       for (const asset of assets) {
         const accum = getAccumAccount(asset.account_code);
 
-        createVoucher({
+        await createVoucher({
           voucherType: "general",
           voucherDate: today,
           description: `감가상각비 - ${asset.name}`,
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Update asset records
-        execute(
+        await execute(
           `UPDATE fixed_assets SET
             accumulated_depreciation = accumulated_depreciation + ?,
             book_value = book_value - ?,

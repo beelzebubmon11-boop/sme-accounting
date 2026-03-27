@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const startDate = searchParams.get("startDate") || "";
   const endDate = searchParams.get("endDate") || "";
 
-  const salesData = queryOne<any>(
+  const salesData = await queryOne<any>(
     `SELECT
       COALESCE(SUM(CASE WHEN tax_amount > 0 THEN supply_amount ELSE 0 END), 0) as taxable_sales,
       COALESCE(SUM(CASE WHEN tax_amount = 0 THEN supply_amount ELSE 0 END), 0) as exempt_sales,
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     endDate
   );
 
-  const purchaseData = queryOne<any>(
+  const purchaseData = await queryOne<any>(
     `SELECT COALESCE(SUM(tax_amount), 0) as purchase_tax
     FROM purchases
     WHERE purchase_date >= ? AND purchase_date <= ? AND is_deleted = 0`,

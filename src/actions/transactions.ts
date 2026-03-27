@@ -28,20 +28,20 @@ export async function createBankTransaction(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   // Validate FK existence
-  if (!existsInTable("accounts", parsed.data.account_id)) {
+  if (!await existsInTable("accounts", parsed.data.account_id)) {
     return { error: "존재하지 않는 계좌입니다." };
   }
-  if (parsed.data.client_id && !existsInTable("clients", parsed.data.client_id)) {
+  if (parsed.data.client_id && !await existsInTable("clients", parsed.data.client_id)) {
     return { error: "존재하지 않는 거래처입니다." };
   }
 
-  const account = queryOne<{ account_code: string; current_balance: number }>(
+  const account = await queryOne<{ account_code: string; current_balance: number }>(
     "SELECT account_code, current_balance FROM accounts WHERE id = ? AND is_deleted = 0", parsed.data.account_id
   );
   if (!account) return { error: "계좌를 찾을 수 없습니다." };
 
   const category = parsed.data.category_id
-    ? queryOne<{ account_code: string; account_name: string }>(
+    ? await queryOne<{ account_code: string; account_name: string }>(
         "SELECT account_code, account_name FROM categories WHERE id = ?", parsed.data.category_id
       )
     : null;
@@ -51,9 +51,9 @@ export async function createBankTransaction(formData: FormData) {
   const catName = category?.account_name || "미분류";
 
   try {
-    checkFiscalPeriodOpen(parsed.data.transaction_date);
+    await checkFiscalPeriodOpen(parsed.data.transaction_date);
 
-    runTransaction(() => {
+    await runTransaction(async () => {
       const voucherType = parsed.data.type === "deposit" ? "deposit" : "withdrawal";
       const lines = parsed.data.type === "deposit"
         ? [
@@ -65,7 +65,7 @@ export async function createBankTransaction(formData: FormData) {
             { accountCode: bankCode, accountName: "보통예금", debitAmount: 0, creditAmount: parsed.data.amount, clientId: parsed.data.client_id },
           ];
 
-      createVoucher({
+      await createVoucher({
         voucherType: voucherType as any,
         voucherDate: parsed.data.transaction_date,
         description: parsed.data.description || (voucherType === "deposit" ? "입금" : "출금"),
@@ -75,7 +75,7 @@ export async function createBankTransaction(formData: FormData) {
 
       // Update account balance
       const delta = parsed.data.type === "deposit" ? parsed.data.amount : -parsed.data.amount;
-      execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      await execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         delta, parsed.data.account_id);
     });
 

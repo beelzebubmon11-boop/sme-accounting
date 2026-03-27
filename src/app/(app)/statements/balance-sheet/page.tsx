@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-export default function BalanceSheetPage() {
-  const balances = queryAll<{ code: string; name: string; category: string; sub_category: string; balance: number }>(`
+export default async function BalanceSheetPage() {
+  const balances = await queryAll<{ code: string; name: string; category: string; sub_category: string; balance: number }>(`
     SELECT coa.code, coa.name, coa.category, COALESCE(coa.sub_category,'') as sub_category,
       CASE WHEN coa.category = 'asset'
            THEN COALESCE(SUM(vl.debit_amount),0) - COALESCE(SUM(vl.credit_amount),0)
@@ -21,14 +21,14 @@ export default function BalanceSheetPage() {
   `);
 
   // Calculate net income from revenue/expense (excluding closing entries)
-  const netIncome = queryAll<{ balance: number }>(`
+  const netIncome = (await queryAll<{ balance: number }>(`
     SELECT COALESCE(SUM(CASE WHEN coa.category='revenue' THEN vl.credit_amount - vl.debit_amount
                               WHEN coa.category='expense' THEN -(vl.debit_amount - vl.credit_amount) END),0) as balance
     FROM voucher_lines vl
     JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0 AND v.is_deleted = 0
     JOIN chart_of_accounts coa ON coa.code = vl.account_code
     WHERE coa.category IN ('revenue','expense')
-  `)[0]?.balance || 0;
+  `))[0]?.balance || 0;
 
   const assets = balances.filter(b => b.category === 'asset');
   const liabilities = balances.filter(b => b.category === 'liability');

@@ -28,7 +28,7 @@ export async function createClientAction(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    execute(
+    await execute(
       `INSERT INTO clients (id, name, business_number, representative_name, contact_phone, contact_email, address, memo)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       uuid(), parsed.data.name, parsed.data.business_number || null,
@@ -58,7 +58,7 @@ export async function updateClientAction(id: string, formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    execute(
+    await execute(
       `UPDATE clients SET name = ?, business_number = ?, representative_name = ?, contact_phone = ?, contact_email = ?, address = ?, memo = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND is_deleted = 0`,
       parsed.data.name, parsed.data.business_number || null,
@@ -77,10 +77,10 @@ export async function updateClientAction(id: string, formData: FormData) {
 export async function deleteClientAction(id: string) {
   try {
     // Check if client has related sales or purchases
-    const hasSales = queryOne<{ cnt: number }>(
+    const hasSales = await queryOne<{ cnt: number }>(
       "SELECT COUNT(*) as cnt FROM sales WHERE client_id = ? AND is_deleted = 0", id
     );
-    const hasPurchases = queryOne<{ cnt: number }>(
+    const hasPurchases = await queryOne<{ cnt: number }>(
       "SELECT COUNT(*) as cnt FROM purchases WHERE client_id = ? AND is_deleted = 0", id
     );
 
@@ -88,7 +88,7 @@ export async function deleteClientAction(id: string) {
       return { error: "해당 거래처에 연결된 매출/매입이 있어 삭제할 수 없습니다." };
     }
 
-    softDelete("clients", id);
+    await softDelete("clients", id);
     revalidatePath("/clients");
     return { success: true };
   } catch (err: any) {

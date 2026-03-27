@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-export default function IncomeStatementPage() {
-  const items = queryAll<{ code: string; name: string; sub_category: string; amount: number }>(`
+export default async function IncomeStatementPage() {
+  const items = await queryAll<{ code: string; name: string; sub_category: string; amount: number }>(`
     SELECT coa.code, coa.name, COALESCE(coa.sub_category,'') as sub_category,
       CASE WHEN coa.category='revenue' THEN COALESCE(SUM(vl.credit_amount)-SUM(vl.debit_amount),0)
            WHEN coa.category='expense' THEN COALESCE(SUM(vl.debit_amount)-SUM(vl.credit_amount),0)

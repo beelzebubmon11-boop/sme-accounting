@@ -5,12 +5,12 @@ import { Landmark, TrendingUp, TrendingDown, PiggyBank } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const accounts = queryAll<{ id: string; name: string; bank_name: string; account_number: string | null; current_balance: number }>(
+export default async function DashboardPage() {
+  const accounts = await queryAll<{ id: string; name: string; bank_name: string; account_number: string | null; current_balance: number }>(
     "SELECT * FROM accounts WHERE is_active = 1 AND is_deleted = 0 ORDER BY created_at"
   );
 
-  const recentTransactions = queryAll<any>(
+  const recentTransactions = await queryAll<any>(
     `SELECT v.id, v.voucher_no, v.voucher_type as type, v.voucher_date as transaction_date,
             v.description, a.name as account_name,
             COALESCE(SUM(vl.debit_amount), 0) as debit_total,
@@ -29,10 +29,10 @@ export default function DashboardPage() {
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
   const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
 
-  const monthlySales = queryAll<{ total_amount: number }>(
+  const monthlySales = await queryAll<{ total_amount: number }>(
     "SELECT total_amount FROM sales WHERE sale_date >= ? AND sale_date <= ? AND is_deleted = 0", monthStart, monthEnd
   );
-  const monthlyPurchases = queryAll<{ total_amount: number }>(
+  const monthlyPurchases = await queryAll<{ total_amount: number }>(
     "SELECT total_amount FROM purchases WHERE purchase_date >= ? AND purchase_date <= ? AND is_deleted = 0", monthStart, monthEnd
   );
 

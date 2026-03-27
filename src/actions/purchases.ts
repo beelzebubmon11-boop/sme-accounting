@@ -34,17 +34,17 @@ export async function createPurchase(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   // Validate FK existence
-  if (!existsInTable("clients", parsed.data.client_id)) {
+  if (!await existsInTable("clients", parsed.data.client_id)) {
     return { error: "존재하지 않는 거래처입니다." };
   }
 
   const purchaseId = uuid();
 
   try {
-    checkFiscalPeriodOpen(parsed.data.purchase_date);
+    await checkFiscalPeriodOpen(parsed.data.purchase_date);
 
-    runTransaction(() => {
-      execute(
+    await runTransaction(async () => {
+      await execute(
         `INSERT INTO purchases (id, client_id, purchase_date, item_description, supply_amount, tax_amount, total_amount, is_tax_invoice, invoice_number, memo)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         purchaseId, parsed.data.client_id, parsed.data.purchase_date,
@@ -62,7 +62,7 @@ export async function createPurchase(formData: FormData) {
       }
       lines.push({ accountCode: "251", accountName: "외상매입금", debitAmount: 0, creditAmount: totalAmount, clientId: parsed.data.client_id });
 
-      createVoucher({
+      await createVoucher({
         voucherType: "purchase",
         voucherDate: parsed.data.purchase_date,
         description: `매입: ${parsed.data.item_description}`,
@@ -86,7 +86,7 @@ export async function updatePurchaseStatus(id: string, status: string) {
     return { error: "유효하지 않은 상태입니다." };
   }
   try {
-    execute("UPDATE purchases SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0", status, id);
+    await execute("UPDATE purchases SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0", status, id);
     revalidatePath("/purchases");
     return { success: true };
   } catch (err: any) {
@@ -96,10 +96,10 @@ export async function updatePurchaseStatus(id: string, status: string) {
 
 export async function deletePurchase(id: string) {
   try {
-    runTransaction(() => {
+    await runTransaction(async () => {
       // Soft delete vouchers related to this purchase
-      execute("UPDATE vouchers SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ? AND is_deleted = 0", id);
-      softDelete("purchases", id);
+      await execute("UPDATE vouchers SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ? AND is_deleted = 0", id);
+      await softDelete("purchases", id);
     });
     revalidatePath("/purchases");
     revalidatePath("/vouchers");

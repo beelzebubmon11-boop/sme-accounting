@@ -10,8 +10,8 @@ import { Plus, TrendingUp, BarChart3 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function SalesPage() {
-  const sales = queryAll<any>(
+export default async function SalesPage() {
+  const sales = await queryAll<any>(
     `SELECT s.*, c.name as client_name FROM sales s LEFT JOIN clients c ON c.id = s.client_id WHERE s.is_deleted = 0 ORDER BY s.sale_date DESC LIMIT 100`
   );
 

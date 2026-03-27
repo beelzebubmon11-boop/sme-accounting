@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const endDate = `${year}-12-31`;
 
   // Check 1: Depreciation processed
-  const depreciationVoucher = queryOne<any>(
+  const depreciationVoucher = await queryOne<any>(
     `SELECT COUNT(*) as cnt FROM vouchers v
      JOIN voucher_lines vl ON vl.voucher_id = v.id
      WHERE vl.account_code = '820'
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const hasDepreciation = (depreciationVoucher?.cnt || 0) > 0;
 
   // Check 2: Trial balance (debits = credits)
-  const trialBalance = queryOne<any>(
+  const trialBalance = await queryOne<any>(
     `SELECT
       COALESCE(SUM(vl.debit_amount), 0) as total_debit,
       COALESCE(SUM(vl.credit_amount), 0) as total_credit
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     trialBalance && trialBalance.total_debit === trialBalance.total_credit;
 
   // Check if there are any fixed assets needing depreciation
-  const activeAssets = queryOne<any>(
+  const activeAssets = await queryOne<any>(
     "SELECT COUNT(*) as cnt FROM fixed_assets WHERE status = 'active'"
   );
   const hasActiveAssets = (activeAssets?.cnt || 0) > 0;

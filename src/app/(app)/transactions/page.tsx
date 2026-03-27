@@ -10,8 +10,8 @@ import { Plus, ArrowLeftRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function TransactionsPage() {
-  const transactions = queryAll<any>(
+export default async function TransactionsPage() {
+  const transactions = await queryAll<any>(
     `SELECT v.id, v.voucher_no, v.voucher_type as type, v.voucher_date as transaction_date,
             v.description, a.name as account_name,
             COALESCE(SUM(vl.debit_amount), 0) as amount_debit,

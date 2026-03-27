@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryOne, execute } from "@/lib/db/client";
 
 export async function GET() {
-  const data = queryOne("SELECT * FROM profiles WHERE id = 'default'");
+  const data = await queryOne("SELECT * FROM profiles WHERE id = 'default'");
   return NextResponse.json(data || {});
 }
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "대표자명은 50자 이내로 입력하세요." }, { status: 400 });
     }
 
-    execute(
+    await execute(
       "UPDATE profiles SET company_name = ?, business_number = ?, representative_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'",
       companyName, businessNumber || null, representativeName || null
     );

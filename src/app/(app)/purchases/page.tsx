@@ -10,8 +10,8 @@ import { Plus, ShoppingCart } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function PurchasesPage() {
-  const purchases = queryAll<any>(
+export default async function PurchasesPage() {
+  const purchases = await queryAll<any>(
     `SELECT p.*, c.name as client_name FROM purchases p LEFT JOIN clients c ON c.id = p.client_id WHERE p.is_deleted = 0 ORDER BY p.purchase_date DESC LIMIT 100`
   );
 

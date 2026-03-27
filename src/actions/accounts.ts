@@ -25,7 +25,7 @@ export async function createAccount(formData: FormData) {
 
   try {
     const id = uuid();
-    execute(
+    await execute(
       `INSERT INTO accounts (id, name, bank_name, account_number, account_type, initial_balance, current_balance)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       id, parsed.data.name, parsed.data.bank_name, parsed.data.account_number || null,
@@ -52,7 +52,7 @@ export async function updateAccount(id: string, formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    execute(
+    await execute(
       `UPDATE accounts SET name = ?, bank_name = ?, account_number = ?, account_type = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND is_deleted = 0`,
       parsed.data.name, parsed.data.bank_name, parsed.data.account_number || null,
@@ -70,14 +70,14 @@ export async function updateAccount(id: string, formData: FormData) {
 export async function deleteAccount(id: string) {
   try {
     // Check for related vouchers
-    const hasVouchers = queryOne<{ cnt: number }>(
+    const hasVouchers = await queryOne<{ cnt: number }>(
       "SELECT COUNT(*) as cnt FROM vouchers WHERE account_id = ? AND is_deleted = 0", id
     );
     if ((hasVouchers?.cnt || 0) > 0) {
       return { error: "해당 계좌에 연결된 전표가 있어 삭제할 수 없습니다." };
     }
 
-    softDelete("accounts", id);
+    await softDelete("accounts", id);
     revalidatePath("/accounts");
     revalidatePath("/dashboard");
     return { success: true };

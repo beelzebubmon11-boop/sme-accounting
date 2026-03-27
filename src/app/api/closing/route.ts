@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { queryAll, queryOne, execute, uuid, runTransaction, createVoucher } from "@/lib/db/client";
 
 export async function GET() {
-  const closings = queryAll(
+  const closings = await queryAll(
     "SELECT * FROM fiscal_closings ORDER BY fiscal_year DESC"
   );
   return NextResponse.json(closings);
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already closed
-    const existing = queryOne<any>(
+    const existing = await queryOne<any>(
       "SELECT id FROM fiscal_closings WHERE fiscal_year = ? AND status = 'closed'",
       fiscal_year
     );
@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
     const startDate = `${fiscal_year}-01-01`;
     const endDate = `${fiscal_year}-12-31`;
 
-    runTransaction(() => {
+    await runTransaction(async () => {
       // 1. Calculate net income (revenue - expense)
-      const revenueData = queryAll<{ code: string; name: string; amount: number }>(`
+      const revenueData = await queryAll<{ code: string; name: string; amount: number }>(`
         SELECT coa.code, coa.name,
           COALESCE(SUM(vl.credit_amount) - SUM(vl.debit_amount), 0) as amount
         FROM voucher_lines vl
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         HAVING amount != 0
       `, startDate, endDate);
 
-      const expenseData = queryAll<{ code: string; name: string; amount: number }>(`
+      const expenseData = await queryAll<{ code: string; name: string; amount: number }>(`
         SELECT coa.code, coa.name,
           COALESCE(SUM(vl.debit_amount) - SUM(vl.credit_amount), 0) as amount
         FROM voucher_lines vl
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
           description: "결산 마감분개 - 수익 → 이익잉여금",
         });
 
-        createVoucher({
+        await createVoucher({
           voucherType: "general",
           voucherDate: endDate,
           description: `${fiscal_year}년 수익 마감분개`,
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
           })),
         ];
 
-        createVoucher({
+        await createVoucher({
           voucherType: "general",
           voucherDate: endDate,
           description: `${fiscal_year}년 비용 마감분개`,
@@ -124,10 +124,10 @@ export async function POST(request: NextRequest) {
       // 3. Generate opening balances for next year (기초잔액 이월)
       const nextYear = fiscal_year + 1;
       // Delete existing opening balances for next year
-      execute("DELETE FROM opening_balances WHERE fiscal_year = ?", nextYear);
+      await execute("DELETE FROM opening_balances WHERE fiscal_year = ?", nextYear);
 
       // Get all BS account balances (asset, liability, equity)
-      const bsBalances = queryAll<{ code: string; name: string; category: string; balance: number }>(`
+      const bsBalances = await queryAll<{ code: string; name: string; category: string; balance: number }>(`
         SELECT coa.code, coa.name, coa.category,
           COALESCE(SUM(vl.debit_amount), 0) - COALESCE(SUM(vl.credit_amount), 0) as balance
         FROM chart_of_accounts coa
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
         const debitBalance = b.balance > 0 ? b.balance : 0;
         const creditBalance = b.balance < 0 ? -b.balance : 0;
 
-        execute(
+        await execute(
           `INSERT INTO opening_balances (id, fiscal_year, account_code, account_name, debit_balance, credit_balance)
            VALUES (?, ?, ?, ?, ?, ?)`,
           uuid(), nextYear, b.code, b.name, debitBalance, creditBalance
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 4. Record fiscal closing
-      execute(
+      await execute(
         `INSERT INTO fiscal_closings (id, fiscal_year, closing_date, status, closed_at)
          VALUES (?, ?, ?, 'closed', ?)`,
         closingId, fiscal_year, today, now

@@ -7,8 +7,8 @@ import { ClipboardList } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function AssetLedgerPage() {
-  const assets = queryAll<any>(
+export default async function AssetLedgerPage() {
+  const assets = await queryAll<any>(
     `SELECT * FROM fixed_assets ORDER BY acquisition_date DESC`
   );
 
