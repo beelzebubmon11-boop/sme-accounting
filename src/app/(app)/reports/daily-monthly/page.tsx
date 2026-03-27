@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 
 export default function DailyMonthlyPage() {
   const yr = new Date().getFullYear();
-  const monthly = queryAll<any>(`SELECT strftime('%Y-%m',v.voucher_date) as m, SUM(vl.debit_amount) as d, SUM(vl.credit_amount) as c FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id WHERE strftime('%Y',v.voucher_date)='${yr}' GROUP BY m ORDER BY m`);
-  const daily = queryAll<any>(`SELECT v.voucher_date as day, SUM(vl.debit_amount) as d, SUM(vl.credit_amount) as c, COUNT(DISTINCT v.id) as cnt FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id WHERE strftime('%Y',v.voucher_date)='${yr}' GROUP BY v.voucher_date ORDER BY v.voucher_date DESC LIMIT 60`);
+  const startDate = `${yr}-01-01`;
+  const endDate = `${yr}-12-31`;
+  const monthly = queryAll<any>(`SELECT strftime('%Y-%m',v.voucher_date) as m, SUM(vl.debit_amount) as d, SUM(vl.credit_amount) as c FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id AND v.is_deleted = 0 WHERE v.voucher_date >= ? AND v.voucher_date <= ? GROUP BY m ORDER BY m`, startDate, endDate);
+  const daily = queryAll<any>(`SELECT v.voucher_date as day, SUM(vl.debit_amount) as d, SUM(vl.credit_amount) as c, COUNT(DISTINCT v.id) as cnt FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id AND v.is_deleted = 0 WHERE v.voucher_date >= ? AND v.voucher_date <= ? GROUP BY v.voucher_date ORDER BY v.voucher_date DESC LIMIT 60`, startDate, endDate);
   const mTD = monthly.reduce((s: number,r: any)=>s+r.d,0); const mTC = monthly.reduce((s: number,r: any)=>s+r.c,0);
 
   return (

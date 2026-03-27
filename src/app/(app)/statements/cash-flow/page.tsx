@@ -17,7 +17,7 @@ export default function CashFlowPage() {
       END
     ), 0) as net_income
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0 AND v.is_deleted = 0
     JOIN chart_of_accounts coa ON coa.code = vl.account_code
     WHERE coa.category IN ('revenue', 'expense')
     AND v.voucher_date >= ? AND v.voucher_date <= ?
@@ -28,7 +28,7 @@ export default function CashFlowPage() {
   const depData = queryOne<any>(`
     SELECT COALESCE(SUM(vl.debit_amount), 0) as depreciation
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     WHERE vl.account_code = '820'
     AND v.voucher_date >= ? AND v.voucher_date <= ?
   `, startDate, endDate);
@@ -39,7 +39,7 @@ export default function CashFlowPage() {
     const data = queryOne<any>(`
       SELECT COALESCE(SUM(vl.debit_amount) - SUM(vl.credit_amount), 0) as net_change
       FROM voucher_lines vl
-      JOIN vouchers v ON v.id = vl.voucher_id
+      JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
       WHERE vl.account_code = ?
       AND v.voucher_date >= ? AND v.voucher_date <= ?
     `, code, startDate, endDate);
@@ -66,7 +66,7 @@ export default function CashFlowPage() {
   const investData = queryOne<any>(`
     SELECT COALESCE(SUM(vl.debit_amount), 0) as asset_purchases
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     JOIN chart_of_accounts coa ON coa.code = vl.account_code
     WHERE coa.code IN ('201', '202', '203')
     AND v.voucher_date >= ? AND v.voucher_date <= ?

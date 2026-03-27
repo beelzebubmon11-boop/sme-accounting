@@ -12,7 +12,7 @@ export default function IncomeStatementPage() {
       END as amount
     FROM chart_of_accounts coa
     LEFT JOIN voucher_lines vl ON vl.account_code = coa.code
-    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0
+    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0 AND v.is_deleted = 0
     WHERE coa.category IN ('revenue','expense') AND coa.is_active = 1
     GROUP BY coa.code, coa.name, coa.category, coa.sub_category
     HAVING amount != 0

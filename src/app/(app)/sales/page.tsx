@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default function SalesPage() {
   const sales = queryAll<any>(
-    `SELECT s.*, c.name as client_name FROM sales s LEFT JOIN clients c ON c.id = s.client_id ORDER BY s.sale_date DESC LIMIT 100`
+    `SELECT s.*, c.name as client_name FROM sales s LEFT JOIN clients c ON c.id = s.client_id WHERE s.is_deleted = 0 ORDER BY s.sale_date DESC LIMIT 100`
   );
 
   return (

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
   const accounts = queryAll<{ id: string; name: string; bank_name: string; account_number: string | null; current_balance: number }>(
-    "SELECT * FROM accounts WHERE is_active = 1 ORDER BY created_at"
+    "SELECT * FROM accounts WHERE is_active = 1 AND is_deleted = 0 ORDER BY created_at"
   );
 
   const recentTransactions = queryAll<any>(
@@ -25,10 +25,10 @@ export default function DashboardPage() {
   const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
 
   const monthlySales = queryAll<{ total_amount: number }>(
-    "SELECT total_amount FROM sales WHERE sale_date >= ? AND sale_date <= ?", monthStart, monthEnd
+    "SELECT total_amount FROM sales WHERE sale_date >= ? AND sale_date <= ? AND is_deleted = 0", monthStart, monthEnd
   );
   const monthlyPurchases = queryAll<{ total_amount: number }>(
-    "SELECT total_amount FROM purchases WHERE purchase_date >= ? AND purchase_date <= ?", monthStart, monthEnd
+    "SELECT total_amount FROM purchases WHERE purchase_date >= ? AND purchase_date <= ? AND is_deleted = 0", monthStart, monthEnd
   );
 
   const totalMonthlySales = monthlySales.reduce((sum, s) => sum + s.total_amount, 0);

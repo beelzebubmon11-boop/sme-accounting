@@ -34,10 +34,15 @@ function calcMonthlyDepreciation(asset: Asset): number {
       (asset.acquisition_cost - asset.salvage_value) / asset.useful_life / 12
     );
   } else {
-    // Declining balance
-    const rate = 1 - Math.pow(asset.salvage_value / asset.acquisition_cost, 1 / asset.useful_life);
-    const annual = Math.round(asset.book_value * rate);
-    return Math.round(annual / 12);
+    // Declining balance - handle salvage_value = 0 case
+    const salvage = asset.salvage_value > 0 ? asset.salvage_value : 1;
+    const rate = 1 - Math.pow(salvage / asset.acquisition_cost, 1 / asset.useful_life);
+    const clampedRate = Math.min(rate, 0.5); // Cap at 50% per year to prevent over-depreciation
+    const annual = Math.round(asset.book_value * clampedRate);
+    const monthly = Math.round(annual / 12);
+    // Ensure we don't depreciate below salvage value
+    const maxDepreciation = asset.book_value - asset.salvage_value;
+    return Math.min(monthly, Math.max(maxDepreciation, 0));
   }
 }
 

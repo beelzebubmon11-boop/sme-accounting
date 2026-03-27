@@ -111,12 +111,50 @@ export function runTransaction<T>(fn: () => T): T {
   return getDb().transaction(fn)();
 }
 
+// ============ 전기기간 검증 ============
+
+export function checkFiscalPeriodOpen(date: string): void {
+  const year = parseInt(date.substring(0, 4));
+  const closed = queryOne<{ id: string }>(
+    "SELECT id FROM fiscal_closings WHERE fiscal_year = ? AND status = 'closed'", year
+  );
+  if (closed) {
+    throw new Error(`${year}년은 마감된 회계연도입니다. 전표를 입력할 수 없습니다.`);
+  }
+}
+
+// ============ Audit Log ============
+
+export function auditLog(tableName: string, recordId: string, action: string, oldData?: any, newData?: any) {
+  execute(
+    "INSERT INTO audit_logs (id, table_name, record_id, action, old_data, new_data) VALUES (?, ?, ?, ?, ?, ?)",
+    uuid(), tableName, recordId, action,
+    oldData ? JSON.stringify(oldData) : null,
+    newData ? JSON.stringify(newData) : null
+  );
+}
+
+// ============ Soft Delete Helper ============
+
+export function softDelete(table: string, id: string) {
+  execute(
+    `UPDATE ${table} SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, id
+  );
+}
+
+// ============ FK Existence Check ============
+
+export function existsInTable(table: string, id: string): boolean {
+  const row = queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM ${table} WHERE id = ? AND (is_deleted = 0 OR is_deleted IS NULL)`, id);
+  return (row?.cnt || 0) > 0;
+}
+
 // ============ 전표 번호 생성 ============
 
 export function generateVoucherNo(date: string): string {
   const ym = date.substring(0, 7).replace("-", "");
   const count = queryOne<{ cnt: number }>(
-    "SELECT COUNT(*) as cnt FROM vouchers WHERE voucher_date LIKE ?", `${date.substring(0, 7)}%`
+    "SELECT COUNT(*) as cnt FROM vouchers WHERE voucher_date LIKE ? AND is_deleted = 0", `${date.substring(0, 7)}%`
   );
   const seq = ((count?.cnt || 0) + 1).toString().padStart(4, "0");
   return `${ym}-${seq}`;
@@ -144,12 +182,15 @@ export function createVoucher(data: {
   const voucherId = uuid();
   const voucherNo = generateVoucherNo(data.voucherDate);
 
+  const fiscalYear = parseInt(data.voucherDate.substring(0, 4));
+
   execute(
-    `INSERT INTO vouchers (id, voucher_no, voucher_type, voucher_date, description, is_closing, sale_id, purchase_id, account_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO vouchers (id, voucher_no, voucher_type, voucher_date, description, is_closing, sale_id, purchase_id, account_id, fiscal_year)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     voucherId, voucherNo, data.voucherType, data.voucherDate,
     data.description, data.isClosing ? 1 : 0,
-    data.saleId || null, data.purchaseId || null, data.accountId || null
+    data.saleId || null, data.purchaseId || null, data.accountId || null,
+    fiscalYear
   );
 
   const stmt = getDb().prepare(

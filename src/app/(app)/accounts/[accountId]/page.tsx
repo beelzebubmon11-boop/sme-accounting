@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function AccountDetailPage({ params }: { params: Promise<{ accountId: string }> }) {
   const { accountId } = await params;
 
-  const account = queryOne<any>("SELECT * FROM accounts WHERE id = ?", accountId);
+  const account = queryOne<any>("SELECT * FROM accounts WHERE id = ? AND is_deleted = 0", accountId);
   if (!account) notFound();
 
   const transactions = queryAll<any>(

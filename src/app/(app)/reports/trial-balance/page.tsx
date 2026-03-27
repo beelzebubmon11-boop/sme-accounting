@@ -26,7 +26,7 @@ export default function TrialBalancePage() {
       COALESCE(SUM(vl.credit_amount), 0) as total_credit
     FROM chart_of_accounts coa
     LEFT JOIN voucher_lines vl ON vl.account_code = coa.code
-    LEFT JOIN vouchers v ON v.id = vl.voucher_id
+    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     WHERE coa.is_active = 1
     GROUP BY coa.code, coa.name, coa.category, coa.sub_category
     HAVING total_debit > 0 OR total_credit > 0

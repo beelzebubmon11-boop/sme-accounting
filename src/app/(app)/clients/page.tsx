@@ -9,7 +9,7 @@ import { Plus, Users } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default function ClientsPage() {
-  const clients = queryAll<any>("SELECT * FROM clients ORDER BY name");
+  const clients = queryAll<any>("SELECT * FROM clients WHERE is_deleted = 0 ORDER BY name");
 
   return (
     <div className="space-y-6">

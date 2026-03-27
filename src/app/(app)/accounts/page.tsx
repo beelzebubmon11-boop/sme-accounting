@@ -10,7 +10,7 @@ import { Plus, Landmark } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export default function AccountsPage() {
-  const accounts = queryAll<any>("SELECT * FROM accounts ORDER BY created_at");
+  const accounts = queryAll<any>("SELECT * FROM accounts WHERE is_deleted = 0 ORDER BY created_at");
 
   return (
     <div className="space-y-6">

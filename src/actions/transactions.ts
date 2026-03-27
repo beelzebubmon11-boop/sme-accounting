@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { queryOne, execute, uuid, runTransaction, createVoucher } from "@/lib/db/client";
+import { queryOne, execute, runTransaction, createVoucher, existsInTable, checkFiscalPeriodOpen } from "@/lib/db/client";
 import { z } from "zod";
 
 const bankTransactionSchema = z.object({
@@ -9,9 +9,9 @@ const bankTransactionSchema = z.object({
   category_id: z.string().optional().nullable(),
   client_id: z.string().optional().nullable(),
   type: z.enum(["deposit", "withdrawal"]),
-  amount: z.number().positive("금액은 0보다 커야 합니다"),
-  description: z.string().optional(),
-  transaction_date: z.string().min(1, "거래일을 입력하세요"),
+  amount: z.number().positive("금액은 0보다 커야 합니다").int("금액은 정수로 입력하세요"),
+  description: z.string().max(200).optional(),
+  transaction_date: z.string().min(1, "거래일을 입력하세요").regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식: YYYY-MM-DD"),
 });
 
 export async function createBankTransaction(formData: FormData) {
@@ -20,15 +20,23 @@ export async function createBankTransaction(formData: FormData) {
     category_id: formData.get("category_id") || null,
     client_id: formData.get("client_id") || null,
     type: formData.get("type"),
-    amount: Number(formData.get("amount")),
+    amount: Math.round(Number(formData.get("amount")) || 0),
     description: formData.get("description") || undefined,
     transaction_date: formData.get("transaction_date"),
   });
 
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
+  // Validate FK existence
+  if (!existsInTable("accounts", parsed.data.account_id)) {
+    return { error: "존재하지 않는 계좌입니다." };
+  }
+  if (parsed.data.client_id && !existsInTable("clients", parsed.data.client_id)) {
+    return { error: "존재하지 않는 거래처입니다." };
+  }
+
   const account = queryOne<{ account_code: string; current_balance: number }>(
-    "SELECT account_code, current_balance FROM accounts WHERE id = ?", parsed.data.account_id
+    "SELECT account_code, current_balance FROM accounts WHERE id = ? AND is_deleted = 0", parsed.data.account_id
   );
   if (!account) return { error: "계좌를 찾을 수 없습니다." };
 
@@ -43,6 +51,8 @@ export async function createBankTransaction(formData: FormData) {
   const catName = category?.account_name || "미분류";
 
   try {
+    checkFiscalPeriodOpen(parsed.data.transaction_date);
+
     runTransaction(() => {
       const voucherType = parsed.data.type === "deposit" ? "deposit" : "withdrawal";
       const lines = parsed.data.type === "deposit"

@@ -9,7 +9,7 @@ export default function CashBookPage() {
   const entries = queryAll<any>(`
     SELECT v.voucher_date,v.voucher_no,v.description,vl.debit_amount,vl.credit_amount,
       (SELECT account_name FROM voucher_lines WHERE voucher_id=vl.voucher_id AND id!=vl.id LIMIT 1) as counterpart
-    FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id
+    FROM voucher_lines vl JOIN vouchers v ON v.id=vl.voucher_id AND v.is_deleted = 0
     WHERE vl.account_code IN ('101','103') ORDER BY v.voucher_date,v.voucher_no LIMIT 200
   `);
   let bal = 0;

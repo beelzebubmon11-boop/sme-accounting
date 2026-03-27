@@ -1,23 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { execute, uuid, runTransaction, createVoucher } from "@/lib/db/client";
+import { execute, uuid, runTransaction, createVoucher, existsInTable, softDelete, checkFiscalPeriodOpen } from "@/lib/db/client";
 import { z } from "zod";
 
 const purchaseSchema = z.object({
   client_id: z.string().min(1, "거래처를 선택하세요"),
-  purchase_date: z.string().min(1, "매입일을 입력하세요"),
-  item_description: z.string().min(1, "품목을 입력하세요"),
-  supply_amount: z.number().positive("공급가액을 입력하세요"),
-  tax_amount: z.number().min(0).default(0),
+  purchase_date: z.string().min(1, "매입일을 입력하세요").regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식: YYYY-MM-DD"),
+  item_description: z.string().min(1, "품목을 입력하세요").max(200, "품목명은 200자 이내로 입력하세요"),
+  supply_amount: z.number().positive("공급가액은 0보다 커야 합니다").int("금액은 정수로 입력하세요"),
+  tax_amount: z.number().min(0, "세액은 0 이상이어야 합니다").int("금액은 정수로 입력하세요").default(0),
   is_tax_invoice: z.boolean().default(false),
-  invoice_number: z.string().optional(),
-  memo: z.string().optional(),
+  invoice_number: z.string().max(50).optional(),
+  memo: z.string().max(500).optional(),
 });
 
 export async function createPurchase(formData: FormData) {
-  const supplyAmount = Number(formData.get("supply_amount")) || 0;
-  const taxAmount = Number(formData.get("tax_amount")) || 0;
+  const supplyAmount = Math.round(Number(formData.get("supply_amount")) || 0);
+  const taxAmount = Math.round(Number(formData.get("tax_amount")) || 0);
   const totalAmount = supplyAmount + taxAmount;
 
   const parsed = purchaseSchema.safeParse({
@@ -33,9 +33,16 @@ export async function createPurchase(formData: FormData) {
 
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
+  // Validate FK existence
+  if (!existsInTable("clients", parsed.data.client_id)) {
+    return { error: "존재하지 않는 거래처입니다." };
+  }
+
   const purchaseId = uuid();
 
   try {
+    checkFiscalPeriodOpen(parsed.data.purchase_date);
+
     runTransaction(() => {
       execute(
         `INSERT INTO purchases (id, client_id, purchase_date, item_description, supply_amount, tax_amount, total_amount, is_tax_invoice, invoice_number, memo)
@@ -74,19 +81,31 @@ export async function createPurchase(formData: FormData) {
 }
 
 export async function updatePurchaseStatus(id: string, status: string) {
-  execute("UPDATE purchases SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", status, id);
-  revalidatePath("/purchases");
-  return { success: true };
+  const validStatuses = ["unpaid", "partial", "paid"];
+  if (!validStatuses.includes(status)) {
+    return { error: "유효하지 않은 상태입니다." };
+  }
+  try {
+    execute("UPDATE purchases SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0", status, id);
+    revalidatePath("/purchases");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }
 
 export async function deletePurchase(id: string) {
-  runTransaction(() => {
-    execute("DELETE FROM voucher_lines WHERE voucher_id IN (SELECT id FROM vouchers WHERE purchase_id = ?)", id);
-    execute("DELETE FROM vouchers WHERE purchase_id = ?", id);
-    execute("DELETE FROM purchases WHERE id = ?", id);
-  });
-  revalidatePath("/purchases");
-  revalidatePath("/vouchers");
-  revalidatePath("/dashboard");
-  return { success: true };
+  try {
+    runTransaction(() => {
+      // Soft delete vouchers related to this purchase
+      execute("UPDATE vouchers SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ? AND is_deleted = 0", id);
+      softDelete("purchases", id);
+    });
+    revalidatePath("/purchases");
+    revalidatePath("/vouchers");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }

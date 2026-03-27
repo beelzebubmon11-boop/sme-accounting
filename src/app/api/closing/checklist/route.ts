@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     `SELECT COUNT(*) as cnt FROM vouchers v
      JOIN voucher_lines vl ON vl.voucher_id = v.id
      WHERE vl.account_code = '820'
-     AND v.voucher_date >= ? AND v.voucher_date <= ?`,
+     AND v.voucher_date >= ? AND v.voucher_date <= ? AND v.is_deleted = 0`,
     startDate,
     endDate
   );
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       COALESCE(SUM(vl.credit_amount), 0) as total_credit
      FROM voucher_lines vl
      JOIN vouchers v ON v.id = vl.voucher_id
-     WHERE v.voucher_date >= ? AND v.voucher_date <= ?`,
+     WHERE v.voucher_date >= ? AND v.voucher_date <= ? AND v.is_deleted = 0`,
     startDate,
     endDate
   );
