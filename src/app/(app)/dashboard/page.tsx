@@ -11,11 +11,16 @@ export default function DashboardPage() {
   );
 
   const recentTransactions = queryAll<any>(
-    `SELECT t.*, a.name as account_name, c.name as category_name
-     FROM transactions t
-     LEFT JOIN accounts a ON a.id = t.account_id
-     LEFT JOIN categories c ON c.id = t.category_id
-     ORDER BY t.transaction_date DESC LIMIT 10`
+    `SELECT v.id, v.voucher_no, v.voucher_type as type, v.voucher_date as transaction_date,
+            v.description, a.name as account_name,
+            COALESCE(SUM(vl.debit_amount), 0) as debit_total,
+            COALESCE(SUM(vl.credit_amount), 0) as credit_total
+     FROM vouchers v
+     LEFT JOIN accounts a ON a.id = v.account_id
+     LEFT JOIN voucher_lines vl ON vl.voucher_id = v.id
+     WHERE v.is_deleted = 0 AND v.is_closing = 0
+     GROUP BY v.id
+     ORDER BY v.voucher_date DESC, v.created_at DESC LIMIT 10`
   );
 
   const totalBalance = accounts.reduce((sum, a) => sum + a.current_balance, 0);
@@ -123,7 +128,7 @@ export default function DashboardPage() {
                     <p className="text-sm text-muted-foreground">{tx.transaction_date} · {tx.account_name}</p>
                   </div>
                   <p className={`text-lg font-semibold ${tx.type === "deposit" ? "text-green-600" : "text-red-600"}`}>
-                    {tx.type === "deposit" ? "+" : "-"}{formatKRW(tx.amount)}
+                    {tx.type === "deposit" ? "+" : "-"}{formatKRW(tx.type === "deposit" ? tx.debit_total : tx.credit_total)}
                   </p>
                 </div>
               ))}

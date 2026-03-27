@@ -12,11 +12,17 @@ export const dynamic = "force-dynamic";
 
 export default function TransactionsPage() {
   const transactions = queryAll<any>(
-    `SELECT t.*, a.name as account_name, c.name as category_name
-     FROM transactions t
-     LEFT JOIN accounts a ON a.id = t.account_id
-     LEFT JOIN categories c ON c.id = t.category_id
-     ORDER BY t.transaction_date DESC LIMIT 100`
+    `SELECT v.id, v.voucher_no, v.voucher_type as type, v.voucher_date as transaction_date,
+            v.description, a.name as account_name,
+            COALESCE(SUM(vl.debit_amount), 0) as amount_debit,
+            COALESCE(SUM(vl.credit_amount), 0) as amount_credit
+     FROM vouchers v
+     LEFT JOIN accounts a ON a.id = v.account_id
+     LEFT JOIN voucher_lines vl ON vl.voucher_id = v.id
+     WHERE v.is_deleted = 0 AND v.is_closing = 0
+       AND v.voucher_type IN ('deposit', 'withdrawal', 'transfer')
+     GROUP BY v.id
+     ORDER BY v.voucher_date DESC, v.created_at DESC LIMIT 100`
   );
 
   return (
@@ -42,9 +48,9 @@ export default function TransactionsPage() {
                   <TableCell>{tx.account_name}</TableCell>
                   <TableCell>{tx.description || "-"}</TableCell>
                   <TableCell>{tx.category_name && <Badge variant="outline">{tx.category_name}</Badge>}</TableCell>
-                  <TableCell className="text-right text-green-600">{tx.type === "deposit" ? formatKRW(tx.amount) : ""}</TableCell>
-                  <TableCell className="text-right text-red-600">{tx.type === "withdrawal" ? formatKRW(tx.amount) : ""}</TableCell>
-                  <TableCell className="text-right font-medium">{formatKRW(tx.balance_after)}</TableCell>
+                  <TableCell className="text-right text-green-600">{tx.type === "deposit" ? formatKRW(tx.amount_debit) : ""}</TableCell>
+                  <TableCell className="text-right text-red-600">{tx.type === "withdrawal" ? formatKRW(tx.amount_credit) : ""}</TableCell>
+                  <TableCell className="text-right font-medium">-</TableCell>
                 </TableRow>
               ))}
             </TableBody>
