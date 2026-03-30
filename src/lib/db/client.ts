@@ -10,8 +10,10 @@ const txStore = new AsyncLocalStorage<Transaction>();
 function getClient(): Client {
   if (_client) return _client;
 
+  // Vercel serverless: writable filesystem is only /tmp
+  const defaultPath = process.env.VERCEL ? "/tmp/dev-data.db" : "dev-data.db";
   const url = process.env.TURSO_DATABASE_URL
-    || `file:${process.env.SME_DB_PATH || "dev-data.db"}`;
+    || `file:${process.env.SME_DB_PATH || defaultPath}`;
   const authToken = process.env.TURSO_AUTH_TOKEN;
 
   _client = createClient({
@@ -34,14 +36,35 @@ async function ensureInit() {
 
 async function doInit() {
   const db = getClient();
-  if (!process.env.TURSO_DATABASE_URL) {
-    await db.executeMultiple("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  try {
+    if (!process.env.TURSO_DATABASE_URL) {
+      await db.execute("PRAGMA journal_mode = WAL");
+      await db.execute("PRAGMA foreign_keys = ON");
+    }
+    await runMigrations(db);
+  } catch (e) {
+    console.error("[DB init error]", e);
+    throw e;
   }
-  await runMigrations(db);
+}
+
+function splitStatements(sql: string): string[] {
+  // Remove SQL comments, then split by semicolons
+  const lines = sql.split("\n");
+  const cleaned = lines
+    .map(line => {
+      const commentIdx = line.indexOf("--");
+      return commentIdx >= 0 ? line.substring(0, commentIdx) : line;
+    })
+    .join("\n");
+  return cleaned
+    .split(";")
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 }
 
 async function runMigrations(db: Client) {
-  await db.executeMultiple(`CREATE TABLE IF NOT EXISTS _migrations (
+  await db.execute(`CREATE TABLE IF NOT EXISTS _migrations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -53,21 +76,17 @@ async function runMigrations(db: Client) {
 
   for (const name of migrationNames) {
     if (applied.has(name)) continue;
-    const sql = MIGRATIONS[name];
-    // executeMultiple may not handle ALTER TABLE well on libsql,
-    // so execute statements one by one
-    const statements = sql
-      .split(";")
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith("--"));
+    const statements = splitStatements(MIGRATIONS[name]);
     for (const stmt of statements) {
       try {
         await db.execute(stmt);
       } catch (e: any) {
-        // Ignore "duplicate column" errors from ALTER TABLE
-        if (e.message?.includes("duplicate column") || e.message?.includes("already exists")) {
+        const msg = e.message || "";
+        // Ignore benign errors: duplicate columns, already exists, etc.
+        if (msg.includes("duplicate column") || msg.includes("already exists") || msg.includes("table") && msg.includes("already")) {
           continue;
         }
+        console.error(`[migration ${name}] Failed statement: ${stmt.substring(0, 100)}...`, e.message);
         throw e;
       }
     }

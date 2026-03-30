@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS opening_balances (
 -- Journal Entries (분개장)
 CREATE TABLE IF NOT EXISTS journal_entries (
   id TEXT PRIMARY KEY,
-  transaction_id TEXT REFERENCES transactions(id) ON DELETE CASCADE,
+  transaction_id TEXT,
   sale_id TEXT REFERENCES sales(id) ON DELETE CASCADE,
   purchase_id TEXT REFERENCES purchases(id) ON DELETE CASCADE,
   entry_date DATE NOT NULL,
