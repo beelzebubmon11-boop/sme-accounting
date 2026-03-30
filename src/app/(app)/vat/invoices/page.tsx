@@ -7,20 +7,20 @@ import { FileText } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function VatInvoicesPage() {
-  const salesInvoices = queryAll<any>(
+export default async function VatInvoicesPage() {
+  const salesInvoices = await queryAll<any>(
     `SELECT s.sale_date, c.name as client_name, s.item_description, s.supply_amount, s.tax_amount, s.total_amount, s.invoice_number
      FROM sales s
      LEFT JOIN clients c ON c.id = s.client_id
-     WHERE s.is_tax_invoice = 1
+     WHERE s.is_tax_invoice = 1 AND s.is_deleted = 0
      ORDER BY s.sale_date DESC`
   );
 
-  const purchaseInvoices = queryAll<any>(
+  const purchaseInvoices = await queryAll<any>(
     `SELECT p.purchase_date, c.name as client_name, p.item_description, p.supply_amount, p.tax_amount, p.total_amount, p.invoice_number
      FROM purchases p
      LEFT JOIN clients c ON c.id = p.client_id
-     WHERE p.is_tax_invoice = 1
+     WHERE p.is_tax_invoice = 1 AND p.is_deleted = 0
      ORDER BY p.purchase_date DESC`
   );
 

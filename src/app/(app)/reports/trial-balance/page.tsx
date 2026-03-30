@@ -5,11 +5,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export const dynamic = "force-dynamic";
 
-export default function TrialBalancePage() {
+export default async function TrialBalancePage() {
   // Get all account balances from voucher_lines + opening_balances
   const currentYear = new Date().getFullYear();
 
-  const balances = queryAll<{
+  const balances = await queryAll<{
     account_code: string;
     account_name: string;
     category: string;
@@ -26,7 +26,7 @@ export default function TrialBalancePage() {
       COALESCE(SUM(vl.credit_amount), 0) as total_credit
     FROM chart_of_accounts coa
     LEFT JOIN voucher_lines vl ON vl.account_code = coa.code
-    LEFT JOIN vouchers v ON v.id = vl.voucher_id
+    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     WHERE coa.is_active = 1
     GROUP BY coa.code, coa.name, coa.category, coa.sub_category
     HAVING total_debit > 0 OR total_credit > 0
@@ -34,7 +34,7 @@ export default function TrialBalancePage() {
   `);
 
   // Include opening balances
-  const openings = queryAll<{ account_code: string; debit_balance: number; credit_balance: number }>(
+  const openings = await queryAll<{ account_code: string; debit_balance: number; credit_balance: number }>(
     "SELECT account_code, debit_balance, credit_balance FROM opening_balances WHERE fiscal_year = ?", currentYear
   );
   const openingMap = new Map(openings.map(o => [o.account_code, o]));

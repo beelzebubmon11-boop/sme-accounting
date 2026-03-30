@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const end = searchParams.get("end");
   if (!id || !start || !end) return NextResponse.json([]);
 
-  const data = queryAll(
+  const data = await queryAll(
     `SELECT v.voucher_date, v.voucher_no, vl.account_code, vl.account_name,
             vl.debit_amount, vl.credit_amount, v.description
      FROM voucher_lines vl

@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json([]);
   }
 
-  const data = queryAll(
+  const data = await queryAll(
     `SELECT
       v.voucher_date, v.voucher_no, v.voucher_type, v.description,
       vl.debit_amount, vl.credit_amount,

@@ -5,9 +5,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export const dynamic = "force-dynamic";
 
-export default function GeneralLedgerPage() {
+export default async function GeneralLedgerPage() {
   const currentYear = new Date().getFullYear();
-  const data = queryAll<any>(`
+  const yearStr = String(currentYear);
+  const startDate = `${yearStr}-01-01`;
+  const endDate = `${yearStr}-12-31`;
+  const data = await queryAll<any>(`
     SELECT coa.code, coa.name,
       COALESCE(SUM(CASE WHEN strftime('%m',v.voucher_date)='01' THEN vl.debit_amount END),0) as m1d,
       COALESCE(SUM(CASE WHEN strftime('%m',v.voucher_date)='01' THEN vl.credit_amount END),0) as m1c,
@@ -35,12 +38,12 @@ export default function GeneralLedgerPage() {
       COALESCE(SUM(CASE WHEN strftime('%m',v.voucher_date)='12' THEN vl.credit_amount END),0) as m12c
     FROM chart_of_accounts coa
     LEFT JOIN voucher_lines vl ON vl.account_code = coa.code
-    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND strftime('%Y', v.voucher_date) = '${currentYear}'
+    LEFT JOIN vouchers v ON v.id = vl.voucher_id AND v.voucher_date >= ? AND v.voucher_date <= ? AND v.is_deleted = 0
     WHERE coa.is_active = 1
     GROUP BY coa.code, coa.name
     HAVING m1d>0 OR m1c>0 OR m2d>0 OR m2c>0 OR m3d>0 OR m3c>0 OR m4d>0 OR m4c>0 OR m5d>0 OR m5c>0 OR m6d>0 OR m6c>0 OR m7d>0 OR m7c>0 OR m8d>0 OR m8c>0 OR m9d>0 OR m9c>0 OR m10d>0 OR m10c>0 OR m11d>0 OR m11c>0 OR m12d>0 OR m12c>0
     ORDER BY coa.code
-  `);
+  `, startDate, endDate);
 
   const months = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 

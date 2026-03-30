@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "계좌와 데이터가 필요합니다." });
     }
 
-    const account = queryOne<{ id: string; account_code: string; current_balance: number }>(
+    const account = await queryOne<{ id: string; account_code: string; current_balance: number }>(
       "SELECT id, account_code, current_balance FROM accounts WHERE id = ?", accountId
     );
     if (!account) {
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const bankCode = account.account_code || "103";
     let imported = 0;
 
-    runTransaction(() => {
+    await runTransaction(async () => {
       for (const row of rows) {
         if (!row.date) continue;
         const isDeposit = row.deposit > 0;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
               { accountCode: bankCode, accountName: "보통예금", debitAmount: 0, creditAmount: amount, description: row.description },
             ];
 
-        createVoucher({
+        await createVoucher({
           voucherType: voucherType as any,
           voucherDate: row.date,
           description: row.description || (isDeposit ? "입금" : "출금"),
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
         // Update balance
         const delta = isDeposit ? amount : -amount;
-        execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, accountId);
+        await execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, accountId);
 
         imported++;
       }

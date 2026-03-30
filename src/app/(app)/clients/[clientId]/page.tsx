@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ clientId: string }> }) {
   const { clientId } = await params;
-  const client = queryOne<any>("SELECT * FROM clients WHERE id = ?", clientId);
+  const client = await queryOne<any>("SELECT * FROM clients WHERE id = ?", clientId);
   if (!client) notFound();
 
-  const sales = queryAll<any>("SELECT * FROM sales WHERE client_id = ? ORDER BY sale_date DESC LIMIT 20", clientId);
-  const purchases = queryAll<any>("SELECT * FROM purchases WHERE client_id = ? ORDER BY purchase_date DESC LIMIT 20", clientId);
+  const sales = await queryAll<any>("SELECT * FROM sales WHERE client_id = ? AND is_deleted = 0 ORDER BY sale_date DESC LIMIT 20", clientId);
+  const purchases = await queryAll<any>("SELECT * FROM purchases WHERE client_id = ? AND is_deleted = 0 ORDER BY purchase_date DESC LIMIT 20", clientId);
 
   return (
     <div className="space-y-6">

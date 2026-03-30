@@ -36,7 +36,13 @@ export default function AccountLedgerPage() {
       .then(r => r.json()).then(d => setData(d));
   }, [selectedCode, startDate, endDate]);
 
-  let runningBalance = 0;
+  const computedData = (() => {
+    let bal = 0;
+    return data.map(row => {
+      bal += row.debit_amount - row.credit_amount;
+      return { ...row, runningBalance: bal };
+    });
+  })();
 
   return (
     <div className="space-y-6">
@@ -72,9 +78,7 @@ export default function AccountLedgerPage() {
                   <TableHead className="text-right">잔액</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {data.map((row, i) => {
-                    runningBalance += row.debit_amount - row.credit_amount;
-                    return (
+                  {computedData.map((row, i) => (
                       <TableRow key={i}>
                         <TableCell className="whitespace-nowrap">{formatDateShort(row.voucher_date)}</TableCell>
                         <TableCell className="font-mono text-xs">{row.voucher_no}</TableCell>
@@ -83,10 +87,9 @@ export default function AccountLedgerPage() {
                         <TableCell>{row.counterpart || "-"}</TableCell>
                         <TableCell className="text-right">{row.debit_amount > 0 ? formatKRW(row.debit_amount) : ""}</TableCell>
                         <TableCell className="text-right">{row.credit_amount > 0 ? formatKRW(row.credit_amount) : ""}</TableCell>
-                        <TableCell className="text-right font-medium">{formatKRW(runningBalance)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatKRW(row.runningBalance)}</TableCell>
                       </TableRow>
-                    );
-                  })}
+                    ))}
                 </TableBody>
               </Table>
             )}

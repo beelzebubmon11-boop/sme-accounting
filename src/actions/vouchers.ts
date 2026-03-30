@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { uuid, execute, runTransaction, createVoucher, queryOne } from "@/lib/db/client";
+import { execute, runTransaction, createVoucher, queryOne, queryAll, softDelete, auditLog, checkFiscalPeriodOpen } from "@/lib/db/client";
 
 export async function createVoucherAction(data: {
   voucherType: "deposit" | "withdrawal" | "transfer" | "sale" | "purchase" | "general";
@@ -33,9 +33,19 @@ export async function createVoucherAction(data: {
     return { error: "전표일을 입력하세요." };
   }
 
+  // Validate no negative amounts
+  for (const line of data.lines) {
+    if (line.debitAmount < 0 || line.creditAmount < 0) {
+      return { error: "음수 금액은 허용되지 않습니다." };
+    }
+  }
+
   try {
-    runTransaction(() => {
-      createVoucher({
+    // Check fiscal period is open
+    await checkFiscalPeriodOpen(data.voucherDate);
+
+    await runTransaction(async () => {
+      await createVoucher({
         voucherType: data.voucherType,
         voucherDate: data.voucherDate,
         description: data.description,
@@ -43,14 +53,14 @@ export async function createVoucherAction(data: {
         lines: data.lines,
       });
 
-      // Update account balance for deposit/withdrawal vouchers
-      if (data.accountId && (data.voucherType === "deposit" || data.voucherType === "withdrawal")) {
-        const account = queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", data.accountId);
+      // Update account balance for deposit/withdrawal/transfer vouchers
+      if (data.accountId && (data.voucherType === "deposit" || data.voucherType === "withdrawal" || data.voucherType === "transfer")) {
+        const account = await queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", data.accountId);
         if (account) {
           const bankLine = data.lines.find(l => l.accountCode === account.account_code);
           if (bankLine) {
             const delta = bankLine.debitAmount - bankLine.creditAmount;
-            execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, data.accountId);
+            await execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, data.accountId);
           }
         }
       }
@@ -66,27 +76,32 @@ export async function createVoucherAction(data: {
 
 export async function deleteVoucherAction(id: string) {
   try {
-    runTransaction(() => {
-      // Reverse account balance if applicable
-      const voucher = queryOne<{ voucher_type: string; account_id: string | null }>(
-        "SELECT voucher_type, account_id FROM vouchers WHERE id = ?", id
+    await runTransaction(async () => {
+      const voucher = await queryOne<{ voucher_type: string; account_id: string | null; voucher_date: string }>(
+        "SELECT voucher_type, account_id, voucher_date FROM vouchers WHERE id = ? AND is_deleted = 0", id
       );
-      if (voucher?.account_id) {
-        const account = queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", voucher.account_id);
+      if (!voucher) throw new Error("전표를 찾을 수 없습니다.");
+
+      // Check fiscal period
+      await checkFiscalPeriodOpen(voucher.voucher_date);
+
+      // Reverse account balance if applicable
+      if (voucher.account_id && (voucher.voucher_type === "deposit" || voucher.voucher_type === "withdrawal" || voucher.voucher_type === "transfer")) {
+        const account = await queryOne<{ account_code: string }>("SELECT account_code FROM accounts WHERE id = ?", voucher.account_id);
         if (account) {
-          const lines = (require("@/lib/db/client").queryAll as typeof import("@/lib/db/client").queryAll)(
-            "SELECT debit_amount, credit_amount, account_code FROM voucher_lines WHERE voucher_id = ? AND account_code = ?",
+          const lines = await queryAll<{ debit_amount: number; credit_amount: number }>(
+            "SELECT debit_amount, credit_amount FROM voucher_lines WHERE voucher_id = ? AND account_code = ?",
             id, account.account_code
           );
           for (const line of lines) {
             const delta = -(line.debit_amount - line.credit_amount);
-            execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, voucher.account_id);
+            await execute("UPDATE accounts SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", delta, voucher.account_id);
           }
         }
       }
 
-      execute("DELETE FROM voucher_lines WHERE voucher_id = ?", id);
-      execute("DELETE FROM vouchers WHERE id = ?", id);
+      // Soft delete instead of hard delete
+      await softDelete("vouchers", id);
     });
 
     revalidatePath("/vouchers");

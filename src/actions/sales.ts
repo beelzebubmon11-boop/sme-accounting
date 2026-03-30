@@ -1,23 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { execute, uuid, runTransaction, createVoucher } from "@/lib/db/client";
+import { execute, uuid, runTransaction, createVoucher, existsInTable, softDelete, checkFiscalPeriodOpen } from "@/lib/db/client";
 import { z } from "zod";
 
 const saleSchema = z.object({
   client_id: z.string().min(1, "거래처를 선택하세요"),
-  sale_date: z.string().min(1, "매출일을 입력하세요"),
-  item_description: z.string().min(1, "품목을 입력하세요"),
-  supply_amount: z.number().positive("공급가액을 입력하세요"),
-  tax_amount: z.number().min(0).default(0),
+  sale_date: z.string().min(1, "매출일을 입력하세요").regex(/^\d{4}-\d{2}-\d{2}$/, "날짜 형식: YYYY-MM-DD"),
+  item_description: z.string().min(1, "품목을 입력하세요").max(200, "품목명은 200자 이내로 입력하세요"),
+  supply_amount: z.number().positive("공급가액은 0보다 커야 합니다").int("금액은 정수로 입력하세요"),
+  tax_amount: z.number().min(0, "세액은 0 이상이어야 합니다").int("금액은 정수로 입력하세요").default(0),
   is_tax_invoice: z.boolean().default(false),
-  invoice_number: z.string().optional(),
-  memo: z.string().optional(),
+  invoice_number: z.string().max(50).optional(),
+  memo: z.string().max(500).optional(),
 });
 
 export async function createSale(formData: FormData) {
-  const supplyAmount = Number(formData.get("supply_amount")) || 0;
-  const taxAmount = Number(formData.get("tax_amount")) || 0;
+  const supplyAmount = Math.round(Number(formData.get("supply_amount")) || 0);
+  const taxAmount = Math.round(Number(formData.get("tax_amount")) || 0);
   const totalAmount = supplyAmount + taxAmount;
 
   const parsed = saleSchema.safeParse({
@@ -33,11 +33,18 @@ export async function createSale(formData: FormData) {
 
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
+  // Validate FK existence
+  if (!await existsInTable("clients", parsed.data.client_id)) {
+    return { error: "존재하지 않는 거래처입니다." };
+  }
+
   const saleId = uuid();
 
   try {
-    runTransaction(() => {
-      execute(
+    await checkFiscalPeriodOpen(parsed.data.sale_date);
+
+    await runTransaction(async () => {
+      await execute(
         `INSERT INTO sales (id, client_id, sale_date, item_description, supply_amount, tax_amount, total_amount, is_tax_invoice, invoice_number, memo)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         saleId, parsed.data.client_id, parsed.data.sale_date,
@@ -55,7 +62,7 @@ export async function createSale(formData: FormData) {
         lines.push({ accountCode: "257", accountName: "부가세예수금", debitAmount: 0, creditAmount: parsed.data.tax_amount, clientId: parsed.data.client_id });
       }
 
-      createVoucher({
+      await createVoucher({
         voucherType: "sale",
         voucherDate: parsed.data.sale_date,
         description: `매출: ${parsed.data.item_description}`,
@@ -74,19 +81,31 @@ export async function createSale(formData: FormData) {
 }
 
 export async function updateSaleStatus(id: string, status: string) {
-  execute("UPDATE sales SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", status, id);
-  revalidatePath("/sales");
-  return { success: true };
+  const validStatuses = ["unpaid", "partial", "paid"];
+  if (!validStatuses.includes(status)) {
+    return { error: "유효하지 않은 상태입니다." };
+  }
+  try {
+    await execute("UPDATE sales SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0", status, id);
+    revalidatePath("/sales");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }
 
 export async function deleteSale(id: string) {
-  runTransaction(() => {
-    execute("DELETE FROM voucher_lines WHERE voucher_id IN (SELECT id FROM vouchers WHERE sale_id = ?)", id);
-    execute("DELETE FROM vouchers WHERE sale_id = ?", id);
-    execute("DELETE FROM sales WHERE id = ?", id);
-  });
-  revalidatePath("/sales");
-  revalidatePath("/vouchers");
-  revalidatePath("/dashboard");
-  return { success: true };
+  try {
+    await runTransaction(async () => {
+      // Soft delete vouchers related to this sale
+      await execute("UPDATE vouchers SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ? AND is_deleted = 0", id);
+      await softDelete("sales", id);
+    });
+    revalidatePath("/sales");
+    revalidatePath("/vouchers");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
 }

@@ -4,20 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-export default function CashFlowPage() {
+export default async function CashFlowPage() {
   const currentYear = new Date().getFullYear();
   const startDate = `${currentYear}-01-01`;
   const endDate = `${currentYear}-12-31`;
 
   // Net income (revenue - expenses)
-  const incomeData = queryOne<any>(`
+  const incomeData = await queryOne<any>(`
     SELECT COALESCE(SUM(
       CASE WHEN coa.category = 'revenue' THEN vl.credit_amount - vl.debit_amount
            WHEN coa.category = 'expense' THEN -(vl.debit_amount - vl.credit_amount)
       END
     ), 0) as net_income
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_closing = 0 AND v.is_deleted = 0
     JOIN chart_of_accounts coa ON coa.code = vl.account_code
     WHERE coa.category IN ('revenue', 'expense')
     AND v.voucher_date >= ? AND v.voucher_date <= ?
@@ -25,21 +25,21 @@ export default function CashFlowPage() {
   const netIncome = incomeData?.net_income || 0;
 
   // Depreciation expense (account 820 debit sum)
-  const depData = queryOne<any>(`
+  const depData = await queryOne<any>(`
     SELECT COALESCE(SUM(vl.debit_amount), 0) as depreciation
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     WHERE vl.account_code = '820'
     AND v.voucher_date >= ? AND v.voucher_date <= ?
   `, startDate, endDate);
   const depreciation = depData?.depreciation || 0;
 
   // Operating activity changes: accounts receivable, payable, etc.
-  function getAccountChange(code: string): number {
-    const data = queryOne<any>(`
+  async function getAccountChange(code: string): Promise<number> {
+    const data = await queryOne<any>(`
       SELECT COALESCE(SUM(vl.debit_amount) - SUM(vl.credit_amount), 0) as net_change
       FROM voucher_lines vl
-      JOIN vouchers v ON v.id = vl.voucher_id
+      JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
       WHERE vl.account_code = ?
       AND v.voucher_date >= ? AND v.voucher_date <= ?
     `, code, startDate, endDate);
@@ -47,10 +47,10 @@ export default function CashFlowPage() {
   }
 
   // Operating activity items
-  const arChange = getAccountChange("108"); // 외상매출금 increase is cash outflow
-  const apChange = getAccountChange("251"); // 외상매입금 increase is cash inflow
-  const receivableChange = getAccountChange("110"); // 미수금
-  const payableChange = getAccountChange("253"); // 미지급금
+  const arChange = await getAccountChange("108"); // 외상매출금 increase is cash outflow
+  const apChange = await getAccountChange("251"); // 외상매입금 increase is cash inflow
+  const receivableChange = await getAccountChange("110"); // 미수금
+  const payableChange = await getAccountChange("253"); // 미지급금
 
   // For liabilities: credit increase = positive change, but net_change is debit-credit
   // So we negate for liability accounts
@@ -63,10 +63,10 @@ export default function CashFlowPage() {
     (-payableChange);
 
   // Investment activities: fixed asset acquisitions
-  const investData = queryOne<any>(`
+  const investData = await queryOne<any>(`
     SELECT COALESCE(SUM(vl.debit_amount), 0) as asset_purchases
     FROM voucher_lines vl
-    JOIN vouchers v ON v.id = vl.voucher_id
+    JOIN vouchers v ON v.id = vl.voucher_id AND v.is_deleted = 0
     JOIN chart_of_accounts coa ON coa.code = vl.account_code
     WHERE coa.code IN ('201', '202', '203')
     AND v.voucher_date >= ? AND v.voucher_date <= ?
@@ -75,8 +75,8 @@ export default function CashFlowPage() {
   const investingCashFlow = -assetPurchases;
 
   // Financing activities: borrowings and capital
-  const borrowingChange = getAccountChange("280"); // 장기차입금
-  const capitalChange = getAccountChange("331"); // 자본금
+  const borrowingChange = await getAccountChange("280"); // 장기차입금
+  const capitalChange = await getAccountChange("331"); // 자본금
   // For liabilities/equity: credit is increase, debit-credit being negative means increase
   const financingCashFlow = (-borrowingChange) + (-capitalChange);
 

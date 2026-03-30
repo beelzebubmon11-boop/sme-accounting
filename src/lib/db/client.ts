@@ -1,63 +1,104 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import { createClient, type Client, type Transaction } from "@libsql/client";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "crypto";
+import { MIGRATIONS } from "./migrations";
 
-let _db: Database.Database | null = null;
+let _client: Client | null = null;
+let _initPromise: Promise<void> | null = null;
+const txStore = new AsyncLocalStorage<Transaction>();
 
-function getDbPath(): string {
-  return process.env.SME_DB_PATH || path.join(process.cwd(), "dev-data.db");
+function getClient(): Client {
+  if (_client) return _client;
+
+  // Vercel serverless: writable filesystem is only /tmp
+  const defaultPath = process.env.VERCEL ? "/tmp/dev-data.db" : "dev-data.db";
+  const url = process.env.TURSO_DATABASE_URL
+    || `file:${process.env.SME_DB_PATH || defaultPath}`;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+
+  _client = createClient({
+    url,
+    ...(authToken ? { authToken } : {}),
+  });
+
+  return _client;
 }
 
-export function getDb(): Database.Database {
-  if (_db) return _db;
-  const dbPath = getDbPath();
-
-  // Ensure directory exists
-  const dir = path.dirname(dbPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-  _db = new Database(dbPath);
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-
-  // Run migrations if needed
-  initMigrations();
-
-  return _db;
+async function ensureInit() {
+  if (!_initPromise) {
+    _initPromise = doInit().catch((err) => {
+      _initPromise = null;
+      throw err;
+    });
+  }
+  await _initPromise;
 }
 
-function initMigrations() {
-  if (!_db) return;
+async function doInit() {
+  const db = getClient();
+  try {
+    if (!process.env.TURSO_DATABASE_URL) {
+      await db.execute("PRAGMA journal_mode = WAL");
+      await db.execute("PRAGMA foreign_keys = ON");
+    }
+    await runMigrations(db);
+  } catch (e) {
+    console.error("[DB init error]", e);
+    throw e;
+  }
+}
 
-  _db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
+function splitStatements(sql: string): string[] {
+  // Remove SQL comments, then split by semicolons
+  const lines = sql.split("\n");
+  const cleaned = lines
+    .map(line => {
+      const commentIdx = line.indexOf("--");
+      return commentIdx >= 0 ? line.substring(0, commentIdx) : line;
+    })
+    .join("\n");
+  return cleaned
+    .split(";")
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
+
+async function runMigrations(db: Client) {
+  await db.execute(`CREATE TABLE IF NOT EXISTS _migrations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  const migrationsDir = path.join(process.cwd(), "electron", "migrations");
-  if (!fs.existsSync(migrationsDir)) return;
+  const migrationNames = Object.keys(MIGRATIONS).sort();
+  const result = await db.execute("SELECT name FROM _migrations");
+  const applied = new Set(result.rows.map((r: any) => r.name));
 
-  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith(".sql")).sort();
-  const applied = new Set(
-    (_db.prepare("SELECT name FROM _migrations").all() as any[]).map(r => r.name)
-  );
-
-  for (const file of files) {
-    if (applied.has(file)) continue;
-    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-    _db.exec(sql);
-    _db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(file);
+  for (const name of migrationNames) {
+    if (applied.has(name)) continue;
+    const statements = splitStatements(MIGRATIONS[name]);
+    for (const stmt of statements) {
+      try {
+        await db.execute(stmt);
+      } catch (e: any) {
+        const msg = e.message || "";
+        // Ignore benign errors: duplicate columns, already exists, etc.
+        if (msg.includes("duplicate column") || msg.includes("already exists") || msg.includes("table") && msg.includes("already")) {
+          continue;
+        }
+        console.error(`[migration ${name}] Failed statement: ${stmt.substring(0, 100)}...`, e.message);
+        throw e;
+      }
+    }
+    await db.execute({ sql: "INSERT INTO _migrations (name) VALUES (?)", args: [name] });
   }
 
-  // Seed data
-  seedIfEmpty();
+  await seedIfEmpty(db);
 }
 
-function seedIfEmpty() {
-  if (!_db) return;
-  const count = (_db.prepare("SELECT COUNT(*) as cnt FROM chart_of_accounts").get() as any)?.cnt || 0;
+async function seedIfEmpty(db: Client) {
+  const result = await db.execute("SELECT COUNT(*) as cnt FROM chart_of_accounts");
+  const count = Number((result.rows[0] as any)?.cnt) || 0;
   if (count > 0) return;
 
   const coa = [
@@ -84,47 +125,105 @@ function seedIfEmpty() {
     ["951","이자비용","expense","영업외비용"],
   ];
 
-  const insert = _db.prepare("INSERT INTO chart_of_accounts (id,code,name,category,sub_category) VALUES (?,?,?,?,?)");
-  const tx = _db.transaction(() => {
-    for (const [code,name,cat,sub] of coa) insert.run(randomUUID(),code,name,cat,sub);
-  });
-  tx();
+  const stmts = coa.map(([code, name, cat, sub]) => ({
+    sql: "INSERT INTO chart_of_accounts (id,code,name,category,sub_category) VALUES (?,?,?,?,?)",
+    args: [randomUUID(), code, name, cat, sub],
+  }));
+
+  await db.batch(stmts, "write");
 }
 
 // ============ QUERY HELPERS ============
 
 export function uuid(): string { return randomUUID(); }
 
-export function queryAll<T = any>(sql: string, ...params: any[]): T[] {
-  return getDb().prepare(sql).all(...params) as T[];
+function getTarget(): Client | Transaction {
+  return txStore.getStore() || getClient();
 }
 
-export function queryOne<T = any>(sql: string, ...params: any[]): T | undefined {
-  return getDb().prepare(sql).get(...params) as T | undefined;
+export async function queryAll<T = any>(sql: string, ...params: any[]): Promise<T[]> {
+  await ensureInit();
+  const result = await getTarget().execute({ sql, args: params });
+  return result.rows as unknown as T[];
 }
 
-export function execute(sql: string, ...params: any[]) {
-  return getDb().prepare(sql).run(...params);
+export async function queryOne<T = any>(sql: string, ...params: any[]): Promise<T | undefined> {
+  await ensureInit();
+  const result = await getTarget().execute({ sql, args: params });
+  return result.rows[0] as unknown as T | undefined;
 }
 
-export function runTransaction<T>(fn: () => T): T {
-  return getDb().transaction(fn)();
+export async function execute(sql: string, ...params: any[]) {
+  await ensureInit();
+  return await getTarget().execute({ sql, args: params });
+}
+
+export async function runTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  await ensureInit();
+  const db = getClient();
+  const tx = await db.transaction("write");
+  try {
+    const result = await txStore.run(tx, fn);
+    await tx.commit();
+    return result;
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
+}
+
+// ============ 전기기간 검증 ============
+
+export async function checkFiscalPeriodOpen(date: string): Promise<void> {
+  const year = parseInt(date.substring(0, 4));
+  const closed = await queryOne<{ id: string }>(
+    "SELECT id FROM fiscal_closings WHERE fiscal_year = ? AND status = 'closed'", year
+  );
+  if (closed) {
+    throw new Error(`${year}년은 마감된 회계연도입니다. 전표를 입력할 수 없습니다.`);
+  }
+}
+
+// ============ Audit Log ============
+
+export async function auditLog(tableName: string, recordId: string, action: string, oldData?: any, newData?: any) {
+  await execute(
+    "INSERT INTO audit_logs (id, table_name, record_id, action, old_data, new_data) VALUES (?, ?, ?, ?, ?, ?)",
+    uuid(), tableName, recordId, action,
+    oldData ? JSON.stringify(oldData) : null,
+    newData ? JSON.stringify(newData) : null
+  );
+}
+
+// ============ Soft Delete Helper ============
+
+export async function softDelete(table: string, id: string) {
+  await execute(
+    `UPDATE ${table} SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, id
+  );
+}
+
+// ============ FK Existence Check ============
+
+export async function existsInTable(table: string, id: string): Promise<boolean> {
+  const row = await queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM ${table} WHERE id = ? AND (is_deleted = 0 OR is_deleted IS NULL)`, id);
+  return (Number(row?.cnt) || 0) > 0;
 }
 
 // ============ 전표 번호 생성 ============
 
-export function generateVoucherNo(date: string): string {
+export async function generateVoucherNo(date: string): Promise<string> {
   const ym = date.substring(0, 7).replace("-", "");
-  const count = queryOne<{ cnt: number }>(
-    "SELECT COUNT(*) as cnt FROM vouchers WHERE voucher_date LIKE ?", `${date.substring(0, 7)}%`
+  const count = await queryOne<{ cnt: number }>(
+    "SELECT COUNT(*) as cnt FROM vouchers WHERE voucher_date LIKE ? AND is_deleted = 0", `${date.substring(0, 7)}%`
   );
-  const seq = ((count?.cnt || 0) + 1).toString().padStart(4, "0");
+  const seq = ((Number(count?.cnt) || 0) + 1).toString().padStart(4, "0");
   return `${ym}-${seq}`;
 }
 
 // ============ 전표 생성 헬퍼 ============
 
-export function createVoucher(data: {
+export async function createVoucher(data: {
   voucherType: "deposit" | "withdrawal" | "transfer" | "sale" | "purchase" | "general";
   voucherDate: string;
   description: string;
@@ -140,28 +239,30 @@ export function createVoucher(data: {
     clientId?: string | null;
     description?: string;
   }[];
-}): string {
+}): Promise<string> {
   const voucherId = uuid();
-  const voucherNo = generateVoucherNo(data.voucherDate);
+  const voucherNo = await generateVoucherNo(data.voucherDate);
+  const fiscalYear = parseInt(data.voucherDate.substring(0, 4));
 
-  execute(
-    `INSERT INTO vouchers (id, voucher_no, voucher_type, voucher_date, description, is_closing, sale_id, purchase_id, account_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  await execute(
+    `INSERT INTO vouchers (id, voucher_no, voucher_type, voucher_date, description, is_closing, sale_id, purchase_id, account_id, fiscal_year)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     voucherId, voucherNo, data.voucherType, data.voucherDate,
     data.description, data.isClosing ? 1 : 0,
-    data.saleId || null, data.purchaseId || null, data.accountId || null
+    data.saleId || null, data.purchaseId || null, data.accountId || null,
+    fiscalYear
   );
 
-  const stmt = getDb().prepare(
-    `INSERT INTO voucher_lines (id, voucher_id, account_code, account_name, debit_amount, credit_amount, client_id, description, line_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-
-  data.lines.forEach((line, idx) => {
-    stmt.run(uuid(), voucherId, line.accountCode, line.accountName,
+  for (let idx = 0; idx < data.lines.length; idx++) {
+    const line = data.lines[idx];
+    await execute(
+      `INSERT INTO voucher_lines (id, voucher_id, account_code, account_name, debit_amount, credit_amount, client_id, description, line_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      uuid(), voucherId, line.accountCode, line.accountName,
       line.debitAmount, line.creditAmount, line.clientId || null,
-      line.description || null, idx);
-  });
+      line.description || null, idx
+    );
+  }
 
   return voucherId;
 }

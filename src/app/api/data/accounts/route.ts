@@ -2,6 +2,6 @@ import { NextResponse } from "next/server";
 import { queryAll } from "@/lib/db/client";
 
 export async function GET() {
-  const data = queryAll("SELECT id, name, bank_name, account_code FROM accounts WHERE is_active = 1 ORDER BY name");
+  const data = await queryAll("SELECT id, name, bank_name, account_code FROM accounts WHERE is_active = 1 AND is_deleted = 0 ORDER BY name");
   return NextResponse.json(data);
 }
